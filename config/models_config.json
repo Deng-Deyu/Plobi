@@ -1,0 +1,78 @@
+{
+  "models": [
+    {
+      "id": "auto",
+      "name": "Auto",
+      "description": "自动选择最适合当前任务的模型",
+      "type": "local",
+      "provider": "system",
+      "api_key": "",
+      "api_base": "",
+      "default": true,
+      "active": false
+    },
+    {
+      "id": "local_ollama",
+      "name": "Local Ollama",
+      "description": "本地运行的Ollama服务，支持多种开源模型",
+      "type": "local",
+      "provider": "ollama",
+      "api_key": "ollama",
+      "api_base": "http://localhost:11434",
+      "default_model": "qwen2.5:7b",
+      "context_window": 8000,
+      "max_tokens": 1600,
+      "timeout": 600,
+      "active": true
+    },
+    {
+      "id": "deepseek",
+      "name": "DeepSeek",
+      "description": "DeepSeek AI大模型服务",
+      "type": "cloud",
+      "provider": "deepseek",
+      "api_key": "sk-dbfc484445df411682fff39322f2538c",
+      "api_base": "https://api.deepseek.com/v1",
+      "default_model": "deepseek-chat",
+      "context_window": 32000,
+      "max_tokens": 2000,
+      "timeout": 120,
+      "active": true
+    },
+    {
+      "id": "claude",
+      "name": "Claude",
+      "description": "Anthropic Claude系列模型",
+      "type": "cloud",
+      "provider": "anthropic",
+      "api_key": "",
+      "api_base": "https://api.anthropic.com/v1",
+      "default_model": "claude-3-haiku-20240307",
+      "context_window": 200000,
+      "max_tokens": 4096,
+      "timeout": 120,
+      "active": false
+    },
+    {
+      "id": "openai",
+      "name": "OpenAI",
+      "description": "OpenAI GPT系列模型",
+      "type": "cloud",
+      "provider": "openai",
+      "api_key": "",
+      "api_base": "https://api.openai.com/v1",
+      "default_model": "gpt-4o-mini",
+      "context_window": 128000,
+      "max_tokens": 4096,
+      "timeout": 120,
+      "active": false
+    }
+  ],
+  "model_mappings": {
+    "assistant": "deepseek",
+    "geek": "deepseek",
+    "architect": "local_ollama",
+    "publisher": "local_ollama",
+    "scout": "deepseek"
+  }
+}

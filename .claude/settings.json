@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"import app; print\\('导入成功'\\)\")",
+      "Bash(PYTHONIOENCODING=utf-8 python app.py)",
+      "Bash(start /b python app.py)",
+      "Bash(python -m py_compile app.py)",
+      "Bash(python -c \"import traceback; import app; try: app.main\\(\\) except Exception as e: traceback.print_exc\\(\\)\")",
+      "Bash(python -m app)",
+      "Bash(timeout 10s python -u app.py)",
+      "Bash(python -c \"import gradio as gr; print\\('Gradio version:', gr.__version__\\)\")",
+      "Bash(python -m py_compile glass_dashboard.py)",
+      "Bash(timeout 5 python glass_dashboard.py)",
+      "Bash(python test_ui.py)",
+      "Bash(del test_ui.py)"
+    ]
+  }
+}

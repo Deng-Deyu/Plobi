@@ -1,0 +1,26 @@
+# Plobi 依赖清单
+# 安装命令: pip install -r requirements.txt
+
+# Web UI 框架
+gradio>=4.0.0,<5.0.0
+fastapi>=0.104.0
+uvicorn>=0.24.0
+
+# AI 执行引擎
+open-interpreter>=0.2.0,<1.0.0
+
+# 全局快捷键监听 (桌面外壳必需)
+pynput>=1.7.0
+
+# 桌面外壳框架
+PyQt6>=6.6.0
+PyQt6-WebEngine>=6.6.0
+
+# 配置文件管理
+pydantic>=2.5.0
+
+# HTTP 请求库
+requests>=2.31.0
+
+# 开发工具
+python-dotenv>=1.0.0
