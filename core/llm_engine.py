@@ -13,6 +13,10 @@ from typing import Dict, List, Optional, Any, AsyncGenerator, Generator, Union
 import logging
 import httpx
 
+# 加载环境变量（必须在其他导入之前）
+from dotenv import load_dotenv
+load_dotenv()  # 自动加载 .env 文件中的配置
+
 try:
     import openai
     from openai import OpenAI, AsyncOpenAI
@@ -72,19 +76,45 @@ class LLMEngine:
         logger.info("Reloaded all configurations and cleared caches")
 
         # 检查配置是否实际更改
-        import json
         if json.dumps(old_models_config, sort_keys=True) != json.dumps(self.models_config, sort_keys=True):
             logger.info("Models configuration has been updated")
 
     def _load_models_config(self) -> Dict[str, Any]:
-        """加载模型配置"""
+        """加载模型配置，并尝试从环境变量覆盖敏感信息"""
+        config = {"models": []}
         try:
             if MODELS_CONFIG_PATH.exists():
                 with open(MODELS_CONFIG_PATH, 'r', encoding='utf-8') as f:
-                    return json.load(f)
+                    config = json.load(f)
         except Exception as e:
             logger.error(f"加载模型配置失败: {e}")
-        return {"models": []}
+        
+        # 尝试从环境变量覆盖配置
+        models = config.get("models", [])
+        for model in models:
+            model_id = model.get("id")
+            if not model_id:
+                continue
+            
+            # 将模型ID转换为环境变量前缀 (例如: deepseek-chat -> DEEPSEEK_CHAT)
+            prefix = model_id.upper().replace("-", "_").replace(".", "_")
+            
+            # 检查并覆盖 API Key
+            env_api_key = os.environ.get(f"{prefix}_API_KEY")
+            if env_api_key:
+                model["api_key"] = env_api_key
+                
+            # 检查并覆盖 API Base
+            env_api_base = os.environ.get(f"{prefix}_API_BASE")
+            if env_api_base:
+                model["api_base"] = env_api_base
+                
+            # 检查并覆盖 Default Model
+            env_default_model = os.environ.get(f"{prefix}_DEFAULT_MODEL")
+            if env_default_model:
+                model["default_model"] = env_default_model
+
+        return config
 
     def _load_agents_config(self) -> Dict[str, Any]:
         """加载Agent配置"""
@@ -152,12 +182,8 @@ class LLMEngine:
         api_key = model_config.get("api_key", "")
         api_base = model_config.get("api_base", "")
 
-        # 如果API密钥为空，尝试从环境变量获取
-        if not api_key:
-            env_var = f"{model_config.get('provider', '').upper()}_API_KEY"
-            api_key = os.environ.get(env_var, "")
-
         # 如果仍然为空且不是本地模型，则报错
+        # 注意：_load_models_config 已经尝试从环境变量加载了 api_key
         if not api_key and model_config.get("type") != "local":
             raise ValueError(f"未设置模型 {model_id} 的API密钥")
 

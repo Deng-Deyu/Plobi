@@ -1,12 +1,21 @@
 import openai
 import os
+from dotenv import load_dotenv
+
+# 加载环境变量
+load_dotenv()
 
 # 强制绕过系统代理
 os.environ["NO_PROXY"] = "localhost,127.0.0.1,::1"
 
-# 测试密钥 - 来自 models_config.json
-api_key = "sk-dbfc484445df411682fff39322f2538c"
-api_base = "https://api.deepseek.com/v1"
+# 从环境变量读取配置
+api_key = os.getenv("DEEPSEEK_API_KEY")
+api_base = os.getenv("DEEPSEEK_API_BASE", "https://api.deepseek.com/v1")
+
+if not api_key:
+    print("❌ Error: DEEPSEEK_API_KEY not found in environment variables")
+    print("Please create a .env file with your API key")
+    exit(1)
 
 print(f"Testing DeepSeek API Key: {api_key[:12]}...{api_key[-4:]}")
 print(f"API Base: {api_base}")
