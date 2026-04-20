@@ -74,6 +74,7 @@ workspace/*
 # --- IDE 配置文件 ---
 .vscode/
 .idea/
+.claude/
 *.swp
 *.swo
 *~
