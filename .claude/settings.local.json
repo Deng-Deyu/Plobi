@@ -18,7 +18,14 @@
       "Bash(python -c \"import sys; print\\('Executable:', sys.executable\\); print\\('Path:', sys.path[:3]\\)\")",
       "Bash(python -m pip install openai --user)",
       "Bash(python test_llm_engine.py)",
-      "Bash(python -c \"import sys; sys.path.insert\\(0, '.'\\); from glass_dashboard import build_glass_ui; print\\('Import successful'\\)\")"
+      "Bash(python -c \"import sys; sys.path.insert\\(0, '.'\\); from glass_dashboard import build_glass_ui; print\\('Import successful'\\)\")",
+      "Bash(python -c \"import app; print\\('Import successful'\\)\")",
+      "Bash(python -c \"import app; print\\('App module imported successfully'\\)\")",
+      "Bash(python -m py_compile main.py)",
+      "Bash(timeout 10 python main.py)",
+      "Bash(python -c \"import main; print\\('Import successful'\\)\")",
+      "Bash(python test_quick.py)",
+      "Bash(timeout 8 python test_launch.py)"
     ]
   }
 }

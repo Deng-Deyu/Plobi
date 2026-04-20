@@ -29,13 +29,13 @@ for directory in [CONFIG_DIR, WORKSPACE_DIR, AVATAR_DIR]:
 
 # 默认头像数据（base64编码的小图标）
 DEFAULT_AVATARS = {
-    "assistant": "👩‍💼",
-    "geek": "💻",
-    "architect": "🎨",
-    "publisher": "📚",
-    "scout": "🕵️",
-    "hr": "⚙️",
-    "model": "🧠"
+    "assistant": "",
+    "geek": "",
+    "architect": "",
+    "publisher": "",
+    "scout": "",
+    "hr": "",
+    "model": ""
 }
 
 
@@ -77,8 +77,8 @@ def get_agent_avatar(agent_id: str, avatar_path: str = "") -> str:
         except Exception:
             pass
 
-    # 返回默认emoji
-    return DEFAULT_AVATARS.get(agent_id, "🤖")
+    # 返回默认值（空字符串）
+    return DEFAULT_AVATARS.get(agent_id, "")
 
 
 def create_agent_nav_html(agent: Dict[str, Any]) -> gr.HTML:
@@ -1021,6 +1021,7 @@ def create_model_panel(models_config: Dict[str, Any], visible: bool = False) -> 
                             # 保存到文件
                             models_config["models"] = models
                             if save_json_config("models_config.json", models_config):
+                                gr.Info("Configuration Saved!")
                                 return "✅ 模型配置已保存！"
                             else:
                                 return "❌ 保存失败！"
@@ -1036,6 +1037,27 @@ def create_model_panel(models_config: Dict[str, Any], visible: bool = False) -> 
                     )
 
                     save_btn.click(
+                        save_model_config,
+                        inputs=[
+                            id_input, name_input, desc_input, type_input, provider_input,
+                            api_key_input, api_base_input, default_model_input,
+                            context_input, max_tokens_input, timeout_input, active_input
+                        ],
+                        outputs=save_output
+                    )
+
+                    # API Key 和 Base URL 输入变化时自动保存
+                    api_key_input.change(
+                        save_model_config,
+                        inputs=[
+                            id_input, name_input, desc_input, type_input, provider_input,
+                            api_key_input, api_base_input, default_model_input,
+                            context_input, max_tokens_input, timeout_input, active_input
+                        ],
+                        outputs=save_output
+                    )
+
+                    api_base_input.change(
                         save_model_config,
                         inputs=[
                             id_input, name_input, desc_input, type_input, provider_input,
@@ -1136,89 +1158,120 @@ def build_ui():
     with gr.Blocks(
         title="AI OS V4.0",
     ) as app:
-        # ========== 主布局：侧边栏 + 主工作区 ==========
-        with gr.Row():
-            # ========== 左侧侧边栏 ==========
-            with gr.Column(scale=2, elem_id="sidebar"):
-                # Logo
+        # ========== 顶部导航栏 ==========
+        with gr.Column(elem_id="top-navbar"):
+            with gr.Row(elem_classes="navbar-row"):
+                # Logo/标题
                 gr.HTML("""
-                <div class="sidebar-logo">
-                    <h1 class="logo-main">AI OS V4.0</h1>
-                    <span class="logo-sub">SYSTEM DESIGN</span>
+                <div class="navbar-logo">
+                    <h1 class="logo-main">Plobi AI System</h1>
+                    <span class="logo-sub">Multi-Agent Automation Platform</span>
                 </div>
-                """)
+                """, elem_id="navbar-logo")
 
-                # 导航按钮容器
-                with gr.Column(elem_classes="nav-buttons-container"):
-                    nav_buttons = []  # 存储按钮组件和对应的ID
+                # 导航按钮
+                with gr.Row(elem_classes="nav-buttons"):
+                    home_btn = gr.Button("Home", variant="secondary", elem_classes="nav-btn")
+                    model_btn = gr.Button("Model", variant="secondary", elem_classes="nav-btn")
+                    agents_btn = gr.Button("Agents", variant="secondary", elem_classes="nav-btn")
+                    setting_btn = gr.Button("Setting", variant="secondary", elem_classes="nav-btn")
 
-                    for agent in active_agents:
+        # ========== 主内容区域 ==========
+        with gr.Column(elem_id="main-content"):
+            # 存储所有面板的引用
+            all_panels = {}
+
+            # ========== 主页面板 ==========
+            with gr.Column(visible=True, elem_id="home-panel") as home_panel:
+                # 欢迎对话框
+                with gr.Column(elem_classes="welcome-dialog"):
+                    gr.HTML("""
+                    <div class="welcome-header">
+                        <span class="welcome-label">Hi, I'm Plobi</span>
+                    </div>
+                    """)
+                    gr.Markdown("""
+                    Welcome to the AI OS V4.0 - Multi-Agent Automation System.
+                    Select an agent below to start working with specialized AI assistants.
+                    """, elem_classes="welcome-text")
+
+                # Agent卡片网格
+                card_buttons = []  # 存储卡片按钮引用和对应的agent_id
+                with gr.Row(elem_classes="cards-container"):
+                    # 定义要显示的四个子agent（排除assistant作为主agent）
+                    sub_agent_ids = ["geek", "architect", "publisher", "scout"]
+                    sub_agents = [agent for agent in active_agents if agent.get("id") in sub_agent_ids]
+
+                    # 如果找不到四个，使用前四个非assistant的agent
+                    if len(sub_agents) < 4:
+                        sub_agents = [agent for agent in active_agents if agent.get("id") != "assistant"][:4]
+
+                    for agent in sub_agents:
                         agent_id = agent.get("id", "")
-                        agent_name = agent.get("name", "未知Agent")
-                        avatar_content = get_agent_avatar(agent_id, agent.get("avatar", ""))
+                        agent_name = agent.get("name", "Unknown Agent")
+                        # 移除emoji
+                        clean_name = agent_name
+                        # 简单的emoji移除逻辑
+                        import re
+                        clean_name = re.sub(r'[^\w\s\u4e00-\u9fff]', '', clean_name).strip()
+                        if not clean_name:
+                            clean_name = agent_id.replace("_", " ").title()
 
-                        # 判断是否是emoji还是图片
-                        is_emoji = not avatar_content.startswith("data:image")
+                        agent_role = agent.get("role", "")
+                        skills = agent.get("skills", [])
+                        skills_text = " | ".join(skills[:3])  # 最多显示3个技能
 
-                        # 使用emoji作为按钮文本，如果是图片则使用默认emoji
-                        if is_emoji:
-                            button_text = f"{avatar_content} {agent_name}"
-                        else:
-                            # 对于图片头像，使用默认emoji
-                            default_emoji = DEFAULT_AVATARS.get(agent_id, "🤖")
-                            button_text = f"{default_emoji} {agent_name}"
+                        with gr.Column(min_width=200, elem_classes="agent-card-column"):
+                            # 创建卡片按钮
+                            card_btn = gr.Button(
+                                value=f"{clean_name}\n{skills_text}",
+                                elem_classes="agent-card-btn",
+                                variant="secondary"
+                            )
+                            # 存储按钮引用用于事件绑定
+                            card_buttons.append((agent_id, card_btn))
 
-                        btn = gr.Button(
-                            button_text,
-                            variant="secondary",
-                            elem_classes="sidebar-btn"
-                        )
-                        nav_buttons.append((agent_id, btn))
+            # ========== Agent工作面板 ==========
+            agent_panels = {}
+            for idx, agent in enumerate(active_agents):
+                agent_id = agent.get("id", "")
+                is_visible = False  # 所有面板初始隐藏
 
-                    # 功能按钮 - 团队HR
-                    hr_btn = gr.Button(
-                        "⚙️ 团队HR",
-                        variant="secondary",
-                        elem_classes="sidebar-btn"
-                    )
+                # 创建对应的面板（根据Agent类型选择不同的面板创建函数）
+                if agent_id == "assistant":
+                    panel = create_assistant_panel(agent, models_config, visible=is_visible)
+                elif agent_id == "geek":
+                    panel = create_geek_panel(agent, models_config, visible=is_visible)
+                else:
+                    panel = create_generic_agent_panel(agent, models_config, visible=is_visible)
 
-                    # 功能按钮 - 模型中枢
-                    model_btn = gr.Button(
-                        "🧠 模型中枢",
-                        variant="secondary",
-                        elem_classes="sidebar-btn"
-                    )
+                agent_panels[agent_id] = panel
+                all_panels[agent_id] = panel
 
-            # ========== 右侧主工作区 ==========
-            with gr.Column(scale=8, elem_id="main-workspace"):
-                # 存储所有面板的引用
-                all_panels = {}
-                agent_panels = []
+            # ========== 功能面板 ==========
+            hr_panel = create_hr_panel(agents_config, models_config, visible=False)
+            model_panel = create_model_panel(models_config, visible=False)
+            all_panels["hr"] = hr_panel
+            all_panels["model"] = model_panel
 
-                # 创建Agent面板
-                for idx, agent in enumerate(active_agents):
-                    agent_id = agent.get("id", "")
-                    is_visible = (idx == 0)  # 第一个Agent面板可见
+            # 添加设置面板（简单版本）
+            with gr.Column(visible=False, elem_id="setting-panel") as setting_panel:
+                gr.Markdown("## ⚙️ System Settings")
 
-                    # 创建对应的面板（根据Agent类型选择不同的面板创建函数）
-                    if agent_id == "assistant":
-                        panel = create_assistant_panel(agent, models_config, visible=is_visible)
-                    elif agent_id == "geek":
-                        panel = create_geek_panel(agent, models_config, visible=is_visible)
-                    else:
-                        panel = create_generic_agent_panel(agent, models_config, visible=is_visible)
+                # 主题切换
+                gr.Markdown("### Theme")
+                theme_toggle = gr.Radio(
+                    choices=["Light", "Dark"],
+                    value="Light",
+                    label="选择主题",
+                    interactive=True
+                )
 
-                    agent_panels.append((agent_id, panel))
-                    all_panels[agent_id] = panel
+                gr.Markdown("Other configuration options will be available in future updates.")
+                back_btn = gr.Button("Back to Home", variant="secondary", elem_classes="back-btn")
 
-                # 添加功能面板
-                hr_panel = create_hr_panel(agents_config, models_config, visible=False)
-                model_panel = create_model_panel(models_config, visible=False)
-
-                all_panels["hr"] = hr_panel
-                all_panels["model"] = model_panel
-
-                # 初始状态：显示第一个Agent面板
+            all_panels["home"] = home_panel
+            all_panels["setting"] = setting_panel
 
         # ========== 面板切换逻辑 ==========
         def switch_panel(panel_name: str) -> List[gr.update]:
@@ -1228,16 +1281,9 @@ def build_ui():
                 updates.append(gr.update(visible=(name == panel_name)))
             return updates
 
-        # 绑定Agent按钮事件
-        for agent_id, btn in nav_buttons:
-            btn.click(
-                fn=lambda pn=agent_id: switch_panel(pn),
-                outputs=list(all_panels.values())
-            )
-
-        # 绑定功能按钮事件
-        hr_btn.click(
-            fn=lambda: switch_panel("hr"),
+        # 绑定顶部导航按钮事件
+        home_btn.click(
+            fn=lambda: switch_panel("home"),
             outputs=list(all_panels.values())
         )
 
@@ -1246,45 +1292,36 @@ def build_ui():
             outputs=list(all_panels.values())
         )
 
-        # ========== 聊天功能 ==========
-        # 为每个Agent面板添加聊天功能
-        def create_chat_handler(agent_id: str):
-            """为指定Agent创建聊天处理器"""
-            def chat_handler(message: str, history):
-                if not message.strip():
-                    return "", history
+        setting_btn.click(
+            fn=lambda: switch_panel("setting"),
+            outputs=list(all_panels.values())
+        )
 
-                if history is None:
-                    history = []
+        agents_btn.click(
+            fn=lambda: switch_panel("hr"),
+            outputs=list(all_panels.values())
+        )
 
-                # Gradio 6.0格式：添加用户消息
-                history.append({"role": "user", "content": message})
-                yield "", history
+        # 绑定Agent卡片点击事件
+        for agent_id, card_btn in card_buttons:
+            card_btn.click(
+                fn=lambda agent_id=agent_id: switch_panel(agent_id),
+                outputs=list(all_panels.values())
+            )
 
-                # 模拟AI回复（后续会替换为实际模型调用）
-                import time
+        # 绑定返回首页按钮
+        back_btn.click(
+            fn=lambda: switch_panel("home"),
+            outputs=list(all_panels.values())
+        )
 
-                # 第一段回复
-                reply = f"👋 你好！我是{agent_id}。\n\n"
-                reply += f"已收到您的消息: '{message}'\n\n"
-                reply += "我正在处理您的请求，请稍候..."
-
-                history.append({"role": "assistant", "content": reply})
-                yield "", history
-
-                time.sleep(1)
-
-                # 最终回复
-                reply += "\n\n✅ 处理完成！\n"
-                reply += f"这是{agent_id}的模拟回复。实际功能将在后续版本实现。"
-
-                history[-1] = {"role": "assistant", "content": reply}
-                yield "", history
-
-            return chat_handler
-
-        # 为每个Agent面板绑定聊天处理器
-        # 注意：这里需要在实际的面板组件中绑定，这里只是框架
+        # 绑定主题切换事件
+        theme_toggle.change(
+            fn=None,
+            inputs=[theme_toggle],
+            outputs=None,
+            js="(theme) => { if(theme === 'Dark') document.body.classList.add('dark'); else document.body.classList.remove('dark'); }"
+        )
 
     return app
 
@@ -1304,48 +1341,77 @@ def main():
     print("=" * 60)
 
     css = """
-        /* ========== AI OS V4.0 - 极简黑白重构 ========== */
+        /* ========== AI OS V4.0 - Liquid Glass Minimalist ========== */
 
         /* CSS 变量定义 */
         :root {
-            --sidebar-bg: #111111;
-            --sidebar-text: #FFFFFF;
-            --sidebar-hover: rgba(255, 255, 255, 0.1);
-            --workspace-bg: #FFFFFF;
-            --workspace-text: #333333;
-            --border-color: #E5E5E5;
-            --border-dark: #333333;
-            --primary-blue: #0066CC;
-            --primary-blue-dark: #0052A3;
-            --gray-light: #F5F5F5;
-            --gray-medium: #999999;
+            --bg-primary: #FFFFFF;
+            --bg-secondary: #F8FAFC;
+            --bg-glass: rgba(255, 255, 255, 0.85);
+            --text-primary: #1A202C;
+            --text-secondary: #4A5568;
+            --text-tertiary: #718096;
+            --border-light: #E2E8F0;
+            --border-medium: #CBD5E0;
+            --accent-blue: #3182CE;
+            --accent-blue-dark: #2C5282;
+            --accent-teal: #319795;
+            --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            --shadow-glass: 0 8px 32px 0 rgba(31, 38, 135, 0.07);
+            --radius-sm: 4px;
+            --radius-md: 8px;
+            --radius-lg: 12px;
+            --radius-xl: 16px;
         }
 
-        /* 全局字体设置 */
+        /* 暗色主题变量覆盖 */
+        .dark {
+            --bg-primary: #0F172A;
+            --bg-secondary: #1E293B;
+            --bg-glass: rgba(15, 23, 42, 0.85);
+            --text-primary: #F8FAFC;
+            --text-secondary: #CBD5E1;
+            --text-tertiary: #94A3B8;
+            --border-light: #334155;
+            --border-medium: #475569;
+            --accent-blue: #60A5FA;
+            --accent-blue-dark: #93C5FD;
+            --accent-teal: #5EEAD4;
+            --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.2);
+            --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2);
+            --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.2);
+            --shadow-glass: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+        }
+
+        /* 全局字体设置 - 使用系统字体栈，避免Inter/Roboto/Arial */
         * {
-            font-family: 'Nunito', sans-serif !important;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'SF Pro Text', 'Helvetica Neue', sans-serif !important;
+            -webkit-font-smoothing: antialiased !important;
+            -moz-osx-font-smoothing: grayscale !important;
         }
 
-        h1, h2, h3 {
-            font-family: 'Feather Bold', sans-serif !important;
-            font-weight: 700 !important;
-            color: var(--workspace-text) !important;
-            line-height: 1.5 !important;
+        h1, h2, h3, h4 {
+            font-weight: 600 !important;
+            color: var(--text-primary) !important;
+            line-height: 1.25 !important;
+            margin-top: 0 !important;
         }
 
         h1 {
-            font-size: 32px !important;
-            margin: 0 0 16px 0 !important;
+            font-size: 28px !important;
+            margin-bottom: 16px !important;
         }
 
         h2 {
-            font-size: 24px !important;
-            margin: 0 0 12px 0 !important;
+            font-size: 22px !important;
+            margin-bottom: 12px !important;
         }
 
         h3 {
-            font-size: 20px !important;
-            margin: 0 0 8px 0 !important;
+            font-size: 18px !important;
+            margin-bottom: 8px !important;
         }
 
         /* 彻底消除 Gradio 默认样式 */
@@ -1353,115 +1419,258 @@ def main():
             max-width: 100% !important;
             margin: 0 !important;
             padding: 0 !important;
-            background: var(--workspace-bg) !important;
+            background: var(--bg-primary) !important;
+            min-height: 100vh !important;
         }
 
         footer {
             display: none !important;
         }
 
-        /* ========== 侧边栏 ========== */
-        #sidebar {
-            background: var(--sidebar-bg) !important;
-            height: 100vh !important;
-            padding: 24px 16px !important;
-            display: flex !important;
-            flex-direction: column !important;
-            gap: 24px !important;
-            border-right: 1px solid var(--border-dark) !important;
+        /* ========== 顶部导航栏 ========== */
+        #top-navbar {
+            position: sticky !important;
+            top: 0 !important;
+            z-index: 1000 !important;
+            width: 100% !important;
+            background: var(--bg-glass) !important;
+            backdrop-filter: blur(20px) !important;
+            border-bottom: 1px solid var(--border-light) !important;
+            padding: 12px 24px !important;
+            box-shadow: var(--shadow-sm) !important;
         }
 
-        .sidebar-logo {
+        .navbar-row {
             display: flex !important;
-            flex-direction: column !important;
-            align-items: flex-start !important;
-            padding-bottom: 16px !important;
-            border-bottom: 1px solid var(--border-dark) !important;
+            justify-content: space-between !important;
+            align-items: center !important;
+            max-width: 1400px !important;
+            margin: 0 auto !important;
         }
 
-        .sidebar-logo .logo-main {
-            font-family: 'Feather Bold', sans-serif !important;
-            font-size: 20px !important;
+        .navbar-logo {
+            display: flex !important;
+            flex-direction: column !important;
+        }
+
+        .navbar-logo .logo-main {
+            font-size: 18px !important;
             font-weight: 700 !important;
-            color: var(--sidebar-text) !important;
-            margin: 0 0 4px 0 !important;
+            color: var(--text-primary) !important;
+            margin: 0 0 2px 0 !important;
         }
 
-        .sidebar-logo .logo-sub {
-            font-size: 12px !important;
-            color: var(--gray-medium) !important;
+        .navbar-logo .logo-sub {
+            font-size: 11px !important;
+            color: var(--text-tertiary) !important;
+            letter-spacing: 0.5px !important;
+            text-transform: uppercase !important;
             margin: 0 !important;
         }
 
-        .nav-buttons-container {
+        .nav-buttons {
             display: flex !important;
-            flex-direction: column !important;
             gap: 8px !important;
         }
 
-        /* 隐藏 Gradio 默认按钮图标 */
-        .sidebar-btn svg, .sidebar-btn img, .button-icon { display: none !important; }
-
-        /* 极简深色侧边栏按钮样式 */
-        .sidebar-btn {
+        .nav-btn {
             background: transparent !important;
-            border: none !important;
-            box-shadow: none !important;
-            color: #E0E0E0 !important;
-            font-size: 15px !important;
+            border: 1px solid var(--border-light) !important;
+            border-radius: var(--radius-md) !important;
+            color: var(--text-secondary) !important;
+            font-size: 14px !important;
             font-weight: 500 !important;
-            padding: 12px 16px !important;
-            border-radius: 8px !important;
+            padding: 8px 16px !important;
             cursor: pointer !important;
             transition: all 0.2s ease !important;
+        }
+
+        .nav-btn:hover {
+            border-color: var(--accent-blue) !important;
+            color: var(--accent-blue) !important;
+            background: rgba(49, 130, 206, 0.04) !important;
+        }
+
+        /* ========== 主内容区域 ========== */
+        #main-content {
+            max-width: 1400px !important;
+            margin: 0 auto !important;
+            padding: 32px 24px !important;
+        }
+
+        /* ========== 欢迎对话框 ========== */
+        .welcome-dialog {
+            background: var(--bg-secondary) !important;
+            border: 1px solid var(--border-light) !important;
+            border-radius: var(--radius-xl) !important;
+            padding: 32px 40px !important;
+            margin-bottom: 40px !important;
+            box-shadow: var(--shadow-md) !important;
+        }
+
+        .welcome-header {
+            margin-bottom: 16px !important;
+        }
+
+        .welcome-label {
+            font-size: 14px !important;
+            color: var(--text-tertiary) !important;
+            text-transform: uppercase !important;
+            letter-spacing: 1px !important;
+            font-weight: 500 !important;
+        }
+
+        .welcome-text {
+            font-size: 16px !important;
+            line-height: 1.6 !important;
+            color: var(--text-secondary) !important;
+            margin: 0 !important;
+        }
+
+        /* ========== Agent卡片容器 ========== */
+        .cards-container {
+            display: grid !important;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)) !important;
+            gap: 24px !important;
+            margin-bottom: 40px !important;
+        }
+
+        .agent-card-column {
+            padding: 0 !important;
+        }
+
+        /* ========== Agent卡片 ========== */
+        .agent-card {
+            background: var(--bg-primary) !important;
+            border: 1px solid var(--border-light) !important;
+            border-radius: var(--radius-lg) !important;
+            padding: 24px !important;
+            cursor: pointer !important;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+            display: flex !important;
+            flex-direction: column !important;
+            height: 100% !important;
+            box-shadow: var(--shadow-sm) !important;
+        }
+
+        .agent-card:hover {
+            transform: translateY(-4px) !important;
+            border-color: var(--accent-blue) !important;
+            box-shadow: var(--shadow-lg) !important;
+        }
+
+        .card-header {
+            margin-bottom: 16px !important;
+        }
+
+        .agent-name {
+            font-size: 18px !important;
+            font-weight: 600 !important;
+            color: var(--text-primary) !important;
+            margin: 0 0 4px 0 !important;
+        }
+
+        .agent-role {
+            font-size: 13px !important;
+            color: var(--accent-teal) !important;
+            font-weight: 500 !important;
+            display: inline-block !important;
+            padding: 2px 8px !important;
+            background: rgba(49, 151, 149, 0.1) !important;
+            border-radius: var(--radius-sm) !important;
+        }
+
+        .card-body {
+            flex-grow: 1 !important;
+            margin-bottom: 16px !important;
+        }
+
+        .agent-skills {
+            font-size: 14px !important;
+            color: var(--text-secondary) !important;
+            line-height: 1.5 !important;
+            margin: 0 !important;
+        }
+
+        .card-footer {
+            border-top: 1px solid var(--border-light) !important;
+            padding-top: 12px !important;
+        }
+
+        .card-action {
+            font-size: 13px !important;
+            color: var(--accent-blue) !important;
+            font-weight: 500 !important;
             display: flex !important;
             align-items: center !important;
-            gap: 12px !important;
-            text-align: left !important;
-            justify-content: flex-start !important;
+            gap: 4px !important;
         }
 
-        .sidebar-btn:hover {
-            background: rgba(255, 255, 255, 0.1) !important;
-            color: #FFFFFF !important;
+        .card-action::after {
+            content: "→" !important;
+            font-size: 14px !important;
+            transition: transform 0.2s ease !important;
         }
 
-        /* ========== 主工作区 ========== */
-        #main-workspace {
-            background: var(--workspace-bg) !important;
-            height: 100vh !important;
-            padding: 24px 32px !important;
-            overflow-y: auto !important;
-            display: flex !important;
-            flex-direction: column !important;
-            gap: 24px !important;
+        .agent-card:hover .card-action::after {
+            transform: translateX(4px) !important;
         }
 
-        /* ========== AGENT 卡片面板 ========== */
-        .agent-panel {
-            border: 1px solid var(--border-color) !important;
-            border-radius: 12px !important;
+        /* ========== Agent卡片按钮样式 ========== */
+        .agent-card-btn {
+            background: var(--bg-primary) !important;
+            border: 1px solid var(--border-light) !important;
+            border-radius: var(--radius-lg) !important;
             padding: 24px !important;
-            background: var(--workspace-bg) !important;
-            margin-bottom: 16px !important;
+            cursor: pointer !important;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
             display: flex !important;
             flex-direction: column !important;
-            gap: 16px !important;
+            height: 100% !important;
+            box-shadow: var(--shadow-sm) !important;
+            text-align: left !important;
+            align-items: flex-start !important;
+            justify-content: flex-start !important;
+            white-space: normal !important;
+            line-height: 1.5 !important;
+            min-height: 120px !important;
+        }
+
+        .agent-card-btn:hover {
+            transform: translateY(-4px) !important;
+            border-color: var(--accent-blue) !important;
+            box-shadow: var(--shadow-lg) !important;
+        }
+
+        .agent-card-btn::before {
+            content: "" !important;
+            display: block !important;
+            margin-bottom: 8px !important;
+            width: 24px !important;
+            height: 2px !important;
+            background: var(--accent-teal) !important;
+            border-radius: 1px !important;
+        }
+
+        /* ========== 面板通用样式 ========== */
+        .agent-panel {
+            background: var(--bg-primary) !important;
+            border: 1px solid var(--border-light) !important;
+            border-radius: var(--radius-lg) !important;
+            padding: 32px !important;
+            box-shadow: var(--shadow-md) !important;
         }
 
         /* 聊天区域 */
         .chatbot-container {
-            border: 1px solid var(--border-color) !important;
-            border-radius: 12px !important;
-            padding: 20px !important;
-            background: var(--workspace-bg) !important;
-            margin-top: 16px !important;
-            display: flex !important;
-            flex-direction: column !important;
-            gap: 16px !important;
+            border: 1px solid var(--border-light) !important;
+            border-radius: var(--radius-lg) !important;
+            padding: 24px !important;
+            background: var(--bg-primary) !important;
+            margin-top: 24px !important;
         }
 
-        /* 彻底去除气泡背景 */
+        /* 消息样式 */
         .chatbot {
             border: none !important;
             background: transparent !important;
@@ -1470,61 +1679,51 @@ def main():
         .message {
             border: none !important;
             background: transparent !important;
-            padding: 8px 0 !important;
+            padding: 12px 0 !important;
             margin: 0 !important;
-            display: flex !important;
-            align-items: flex-start !important;
-            gap: 12px !important;
-        }
-
-        .message-user {
-            flex-direction: row-reverse !important;
-        }
-
-        .message-avatar {
-            font-size: 24px !important;
-            flex-shrink: 0 !important;
         }
 
         .message-content {
-            flex: 1 !important;
-            padding: 12px !important;
-            border-radius: 8px !important;
+            padding: 12px 16px !important;
+            border-radius: var(--radius-md) !important;
             background: transparent !important;
         }
 
         .message.user .message-content {
-            background: rgba(0, 102, 204, 0.05) !important;
-            border: 1px solid rgba(0, 102, 204, 0.2) !important;
+            background: rgba(49, 130, 206, 0.08) !important;
+            border: 1px solid rgba(49, 130, 206, 0.15) !important;
         }
 
         .message.bot .message-content {
             background: rgba(0, 0, 0, 0.03) !important;
-            border: 1px solid rgba(0, 0, 0, 0.1) !important;
+            border: 1px solid var(--border-light) !important;
         }
 
         /* ========== 按钮样式 ========== */
         .btn-3d-primary {
-            background: var(--primary-blue) !important;
+            background: var(--accent-blue) !important;
             color: white !important;
             border: none !important;
-            border-radius: 8px !important;
+            border-radius: var(--radius-md) !important;
             padding: 12px 24px !important;
-            font-size: 15px !important;
-            font-weight: 600 !important;
+            font-size: 14px !important;
+            font-weight: 500 !important;
             cursor: pointer !important;
             transition: all 0.2s ease !important;
+            box-shadow: var(--shadow-sm) !important;
         }
 
         .btn-3d-primary:hover {
-            background: var(--primary-blue-dark) !important;
+            background: var(--accent-blue-dark) !important;
+            transform: translateY(-1px) !important;
+            box-shadow: var(--shadow-md) !important;
         }
 
         .btn-secondary {
-            background: white !important;
-            color: var(--workspace-text) !important;
-            border: 1px solid var(--border-color) !important;
-            border-radius: 8px !important;
+            background: var(--bg-primary) !important;
+            color: var(--text-secondary) !important;
+            border: 1px solid var(--border-light) !important;
+            border-radius: var(--radius-md) !important;
             padding: 10px 20px !important;
             font-size: 14px !important;
             font-weight: 500 !important;
@@ -1533,124 +1732,106 @@ def main():
         }
 
         .btn-secondary:hover {
-            border-color: var(--primary-blue) !important;
-            color: var(--primary-blue) !important;
+            border-color: var(--accent-blue) !important;
+            color: var(--accent-blue) !important;
+            background: rgba(49, 130, 206, 0.04) !important;
+        }
+
+        .back-btn {
+            margin-top: 16px !important;
+            width: fit-content !important;
         }
 
         /* ========== 输入框与下拉菜单 ========== */
         .input-field, select, textarea, .gr-textbox, .gr-dropdown {
-            height: 48px !important;
-            border: 1px solid var(--border-color) !important;
-            border-radius: 8px !important;
-            padding: 0 16px !important;
-            font-size: 15px !important;
+            border: 1px solid var(--border-light) !important;
+            border-radius: var(--radius-md) !important;
+            padding: 10px 14px !important;
+            font-size: 14px !important;
             transition: all 0.2s ease !important;
-            background: white !important;
+            background: var(--bg-primary) !important;
+            min-height: 44px !important;
         }
 
         .input-field:focus, select:focus, textarea:focus, .gr-textbox:focus, .gr-dropdown:focus {
-            border-color: var(--primary-blue) !important;
+            border-color: var(--accent-blue) !important;
             outline: none !important;
-            box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.1) !important;
+            box-shadow: 0 0 0 3px rgba(49, 130, 206, 0.1) !important;
         }
 
         textarea {
-            min-height: 48px !important;
-            padding: 12px 16px !important;
+            min-height: 44px !important;
+            padding: 12px 14px !important;
             line-height: 1.5 !important;
         }
 
-        /* ========== 配置面板样式 ========== */
-        .config-panel {
-            border: 1px solid var(--border-color) !important;
-            border-radius: 12px !important;
-            padding: 24px !important;
-            background: var(--workspace-bg) !important;
-            margin-bottom: 16px !important;
-        }
-
-        .tab-nav {
-            border-bottom: 1px solid var(--border-color) !important;
-        }
-
-        .tab-button {
-            border: none !important;
-            border-bottom: 2px solid transparent !important;
-            border-radius: 0 !important;
-            margin: 0 8px !important;
-            padding: 12px 16px !important;
-            font-size: 15px !important;
-            font-weight: 500 !important;
-            color: var(--workspace-text) !important;
-            background: transparent !important;
-        }
-
-        .tab-button.selected {
-            border-bottom-color: var(--primary-blue) !important;
-            color: var(--primary-blue) !important;
+        /* ========== 设置面板 ========== */
+        #setting-panel {
+            background: var(--bg-primary) !important;
+            border: 1px solid var(--border-light) !important;
+            border-radius: var(--radius-lg) !important;
+            padding: 32px !important;
+            box-shadow: var(--shadow-md) !important;
         }
 
         /* ========== 响应式设计 ========== */
         @media (max-width: 768px) {
-            #sidebar {
-                padding: 16px 12px !important;
-            }
-
-            .sidebar-logo .logo-main {
-                font-size: 18px !important;
-            }
-
-            .sidebar-btn {
-                padding: 10px 12px !important;
-                font-size: 14px !important;
-                gap: 8px !important;
-            }
-
-            #main-workspace {
-                padding: 16px 20px !important;
-            }
-
-            h1 {
-                font-size: 28px !important;
-            }
-
-            h2 {
-                font-size: 22px !important;
-            }
-
-            h3 {
-                font-size: 18px !important;
-            }
-
-            .agent-panel, .chatbot-container, .config-panel {
-                padding: 16px !important;
-            }
-        }
-
-        @media (max-width: 480px) {
-            #sidebar {
-                padding: 12px 8px !important;
-            }
-
-            .sidebar-logo .logo-sub {
-                display: none !important;
-            }
-
-            .sidebar-btn span {
-                display: none !important;
-            }
-
-            .sidebar-btn {
-                justify-content: center !important;
-                padding: 12px !important;
-            }
-
-            #main-workspace {
+            #top-navbar {
                 padding: 12px 16px !important;
+            }
+
+            #main-content {
+                padding: 24px 16px !important;
+            }
+
+            .welcome-dialog {
+                padding: 24px !important;
+            }
+
+            .cards-container {
+                grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)) !important;
+                gap: 16px !important;
+            }
+
+            .agent-card {
+                padding: 20px !important;
+            }
+
+            .agent-panel, #setting-panel {
+                padding: 24px !important;
             }
 
             h1 {
                 font-size: 24px !important;
+            }
+
+            h2 {
+                font-size: 20px !important;
+            }
+
+            h3 {
+                font-size: 17px !important;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .navbar-row {
+                flex-direction: column !important;
+                align-items: flex-start !important;
+                gap: 12px !important;
+            }
+
+            .nav-buttons {
+                width: 100% !important;
+                justify-content: flex-start !important;
+            }
+
+            .cards-container {
+                grid-template-columns: 1fr !important;
+            }
+
+            .agent-panel, #setting-panel {
+                padding: 20px !important;
             }
         }
         """

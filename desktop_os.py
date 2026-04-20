@@ -768,7 +768,7 @@ def main() -> None:
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
     app.setApplicationName("AI OS V4.0")
-    app.setApplicationDisplayName("AI OS V4.0 - 桌面悬浮总控台")
+    app.setApplicationDisplayName("Plobi")
 
     # 设置信号处理器，支持Ctrl+C
     def signal_handler(signum, frame):

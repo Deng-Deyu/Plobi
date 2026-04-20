@@ -61,9 +61,10 @@ cython_debug/
 # --- 敏感配置与本地数据 (保护你的 API KEY 和聊天记录) ---
 config/settings.json
 config/models_config.json
-sessions/*.json
-workspace/exports/*.txt
-workspace/*.md
+sessions/*
+!sessions/.gitkeep
+workspace/*
+!workspace/.gitkeep
 
 # .env 文件通常包含密钥，应被忽略
 .env
@@ -90,6 +91,10 @@ Desktop.ini
 
 # Linux
 *~
+
+# Logs
+*.log
+output.txt
 
 # --- 临时排除测试/废弃文件 (建议直接本地删除) ---
 test_deepseek_key.py
