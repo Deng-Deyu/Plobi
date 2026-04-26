@@ -15,7 +15,7 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+/lib/
 lib64/
 parts/
 sdist/
@@ -63,8 +63,10 @@ config/settings.json
 config/models_config.json
 sessions/*
 !sessions/.gitkeep
-workspace/*
-!workspace/.gitkeep
+/workspace/*
+!/workspace/.gitkeep
+/workspace/exports/*
+!/workspace/exports/.gitkeep
 
 # .env 文件通常包含密钥，应被忽略
 .env
@@ -101,3 +103,10 @@ output.txt
 test_deepseek_key.py
 test_llm_engine.py
 debug_api.py
+
+# --- 双轨制架构备份文件 ---
+main_dual_backup.py
+main_web_backup.py
+main_web_backup2.py
+main.py.new
+main_web.py

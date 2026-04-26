@@ -1,0 +1,46 @@
+{
+  "$schema": "https://raw.githubusercontent.com/nicegui/tauri/main/tooling/cli/schema.json",
+  "productName": "Plobi Agent",
+  "version": "0.1.0",
+  "identifier": "com.plobi.agent",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "bundle": {
+    "icon": []
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Plobi Agent",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 960,
+        "minHeight": 600,
+        "visible": false,
+        "center": true
+      },
+      {
+        "label": "overlay",
+        "url": "overlay.html",
+        "width": 640,
+        "height": 72,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "visible": false,
+        "center": true
+      }
+    ]
+  },
+  "plugins": {
+    "global-shortcut": {
+      "shortcuts": ["Alt+Slash"]
+    }
+  }
+}
