@@ -107,6 +107,10 @@ debug_api.py
 # --- 双轨制架构备份文件 ---
 main_dual_backup.py
 main_web_backup.py
-main_web_backup2.py
 main.py.new
 main_web.py
+
+# --- Rust/Tauri 编译产物 ---
+src-tauri/target/
+*.rlib
+*.rmeta
