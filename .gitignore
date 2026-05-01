@@ -114,3 +114,10 @@ main_web.py
 src-tauri/target/
 *.rlib
 *.rmeta
+
+# --- Node.js ---
+node_modules/
+
+# --- SQLite ---
+*.db
+*.db-journal

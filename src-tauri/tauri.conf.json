@@ -1,5 +1,4 @@
 {
-  "$schema": "https://raw.githubusercontent.com/nicegui/tauri/main/tooling/cli/schema.json",
   "productName": "Plobi Agent",
   "version": "0.1.0",
   "identifier": "com.plobi.agent",
@@ -21,7 +20,7 @@
         "height": 800,
         "minWidth": 960,
         "minHeight": 600,
-        "visible": false,
+        "visible": true,
         "center": true
       },
       {
@@ -37,10 +36,5 @@
         "center": true
       }
     ]
-  },
-  "plugins": {
-    "global-shortcut": {
-      "shortcuts": ["Alt+Slash"]
-    }
   }
 }

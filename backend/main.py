@@ -9,6 +9,7 @@ import asyncio
 import uuid
 from pathlib import Path
 from datetime import datetime
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, APIRouter
 from fastapi.responses import StreamingResponse
@@ -24,6 +25,12 @@ from agents.graph import build_orchestrator
 from agents.master import MasterAgent
 from planner.plan_generator import PlanGenerator
 from api.files import router as files_router
+from api.plugins import router as plugins_router
+from api.cli import router as cli_router
+from api.exports import router as exports_router
+from api.agents import router as agents_router
+from api.sandbox import router as sandbox_router
+from mcpclient.client import mcp_manager
 
 load_dotenv()
 
@@ -193,7 +200,7 @@ async def send_message(body: SendMessageRequest):
                 content=body.prompt,
                 attachments=body.attachment_ids
             )
-            
+
             # 调用 Master Agent
             agent_config = {
                 "model": {
@@ -203,15 +210,20 @@ async def send_message(body: SendMessageRequest):
                     "max_tokens": 4096
                 }
             }
-            
+
             result = await master_agent.chat(
                 user_message=body.prompt,
                 session_id=body.session_id,
                 agent_config=agent_config
             )
-            
+
             # 流式输出 Master 响应
-            for char in result["content"]:
+            content = result.get("content", "")
+            if not content:
+                await queue.put({"type": "error", "message": "Master Agent 返回空响应"})
+                return
+
+            for char in content:
                 await queue.put({"type": "token", "content": char})
                 await asyncio.sleep(0.01)  # 模拟流式
             
@@ -296,14 +308,17 @@ async def delete_session_api(session_id: str):
 
 # ─── App ───────────────────────────────────────────────────
 
-app = FastAPI(title="Plobi Agent Backend", version="0.2.0")
-
-
-@app.on_event("startup")
-async def startup():
-    """Initialize database on startup"""
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan context manager for startup/shutdown events"""
+    # Startup
     await init_db()
     await seed_default_agents()
+    yield
+    # Shutdown: 关闭所有 MCP 连接
+    await mcp_manager.close_all()
+
+app = FastAPI(title="Plobi Agent Backend", version="0.2.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -316,6 +331,11 @@ app.add_middleware(
 app.include_router(chat_router)
 app.include_router(session_router)
 app.include_router(files_router)
+app.include_router(plugins_router)
+app.include_router(cli_router)
+app.include_router(exports_router)
+app.include_router(agents_router)
+app.include_router(sandbox_router)
 
 
 @app.get("/health")

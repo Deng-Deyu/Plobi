@@ -1,3 +1,4 @@
+
 # Plobi Agent 开发任务
 
 ## Phase 1 - 脚手架搭建 ✅ 已完成
@@ -33,25 +34,31 @@
 - [x] 创建目录结构
   - agents_config/, workspace/, plugins/, workspace/exports/
 
-### 待完成项
-- [ ] SQLite 初始化 + 会话 CRUD (Phase 2)
-- [ ] LangGraph 集成 (Phase 2)
-- [ ] 文件上传/处理 (Phase 2)
-- [ ] MCP 插件系统 (Phase 3)
+## Phase 2 - 核心功能 ✅ 已完成
+- [x] SQLite 数据库初始化
+- [x] 会话持久化 (CRUD)
+- [x] LangGraph Master Agent 实现
+- [x] 子 Agent 调度 (研究员、工程师、出版官等)
+- [x] 文件上传与处理 (图片、PDF、音频、视频)
 
-## Phase 2 - 核心功能 (待开始)
-- [ ] SQLite 数据库初始化
-- [ ] 会话持久化 (CRUD)
-- [ ] LangGraph Master Agent 实现
-- [ ] 子 Agent 调度 (研究员、工程师、出版官等)
-- [ ] 文件上传与处理 (图片、PDF、音频、视频)
-- [ ] task.md 文件监控与执行协议
+## Phase 3 - 插件与扩展 ✅ 已完成
+- [x] MCP 客户端管理器
+- [x] 插件安装系统 (NPM + Python)
+- [x] CLI 工具封装
+- [x] 任务输出到 workspace/exports/
 
-## Phase 3 - 插件与扩展 (待开始)
-- [ ] MCP 客户端管理器
-- [ ] 插件安装系统 (NPM + Python)
-- [ ] CLI 工具封装
-- [ ] 任务输出到 workspace/exports/
+## Phase 4 - Agent 配置与插件 ✅ 已完成
+- [x] Agent 配置 API (backend/api/agents.py)
+- [x] Agent 配置界面 (AgentConfigForm)
+- [x] Agent 记忆系统 (CRUD + 注入 system_prompt + 前端管理)
+- [x] 插件管理 UI (列表 + 启用/禁用 + 安装/卸载)
+- [x] 工程师 Agent - 代码执行沙盒 (backend/api/sandbox.py + SandboxConfirm 弹窗)
+- [x] 剪辑师 Agent - FFmpeg CLI (system_prompt + SANDBOX 标记)
+- [x] 音乐家 Agent - Librosa + music21 (system_prompt + SANDBOX 标记)
+
+## 已知问题
+- [ ] Overlay 窗口输入消息后按回车无法跳转至主窗口对话 (Tauri 跨窗口事件通信待调试)
+- [ ] 系统托盘最小化后恢复窗口待验证
 
 ## 环境配置
 - Node.js: 已安装
@@ -69,9 +76,9 @@ pip install -r requirements.txt
 # 启动后端
 python main.py
 
-# 启动前端开发服务器
-npm run dev
+# 启动 Tauri 应用 (包含前端)
+npm run tauri dev
 
-# 构建 Tauri 应用
+# 构建生产版本
 npm run tauri build
 ```

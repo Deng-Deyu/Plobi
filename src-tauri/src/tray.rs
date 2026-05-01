@@ -20,8 +20,10 @@ pub fn create_tray(app: &App) -> Result<(), Box<dyn std::error::Error>> {
         .on_menu_event(|app, event| match event.id().as_ref() {
             "show" => {
                 if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.unminimize();
                     let _ = window.show();
                     let _ = window.set_focus();
+                    let _ = window.set_ignore_cursor_events(false);
                 }
             }
             "quit" => {

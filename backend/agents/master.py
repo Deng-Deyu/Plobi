@@ -160,5 +160,9 @@ plan.md 格式要求：
     def _extract_plan_id(self, plan_content: str) -> str:
         """从 plan.md 中提取 Plan ID"""
         import re
+        import uuid
         match = re.search(r'\*\*Plan ID\*\*:\s*(\S+)', plan_content)
-        return match.group(1) if match else "unknown"
+        if match:
+            return match.group(1)
+        # 如果 LLM 没有生成有效的 Plan ID，生成一个
+        return str(uuid.uuid4())

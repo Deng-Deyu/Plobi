@@ -1,7 +1,7 @@
 use serde::Serialize;
 
 #[derive(Serialize)]
-struct BackendPortResult {
+pub struct BackendPortResult {
     port: u16,
 }
 

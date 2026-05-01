@@ -11,6 +11,7 @@ export interface Agent {
   };
   status: AgentStatus;
   role: string;
+  mcpServers?: string[];
   isCustom?: boolean;
 }
 

@@ -1,0 +1,73 @@
+{
+  "tools": {
+    "python": {
+      "name": "Python",
+      "description": "Python 解释器",
+      "enabled": true,
+      "installed": true,
+      "paths": {
+        "windows": "C:\\Python314\\python.exe",
+        "darwin": "C:\\Python314\\python.exe",
+        "linux": "C:\\Python314\\python.exe"
+      },
+      "args": [],
+      "timeout": 300
+    },
+    "npx": {
+      "name": "NPX",
+      "description": "Node Package Runner (用于运行 Marp CLI 等)",
+      "enabled": true,
+      "installed": true,
+      "paths": {
+        "windows": "npx",
+        "darwin": "npx",
+        "linux": "npx"
+      },
+      "args": [],
+      "timeout": 120
+    },
+    "marp": {
+      "name": "Marp CLI",
+      "description": "Markdown 转 PPT 工具",
+      "enabled": true,
+      "installed": false,
+      "paths": {
+        "windows": "npx",
+        "darwin": "npx",
+        "linux": "npx"
+      },
+      "args": [
+        "-y",
+        "@marp-team/marp-cli"
+      ],
+      "timeout": 120
+    },
+    "ffmpeg": {
+      "name": "FFmpeg",
+      "description": "视频/音频处理工具",
+      "enabled": false,
+      "installed": true,
+      "paths": {
+        "windows": "ffmpeg",
+        "darwin": "/usr/local/bin/ffmpeg",
+        "linux": "/usr/bin/ffmpeg"
+      },
+      "args": [],
+      "timeout": 300
+    },
+    "pandoc": {
+      "name": "Pandoc",
+      "description": "文档格式转换工具",
+      "enabled": false,
+      "installed": false,
+      "paths": {
+        "windows": "pandoc",
+        "darwin": "/usr/local/bin/pandoc",
+        "linux": "/usr/bin/pandoc"
+      },
+      "args": [],
+      "timeout": 120
+    }
+  },
+  "audit_log": "backend/config/cli_audit.log"
+}

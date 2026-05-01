@@ -6,10 +6,12 @@ Phase 2: 数据持久化
 import aiosqlite
 from datetime import datetime
 from typing import Optional, List, Dict, Any
+from dataclasses import dataclass
 import json
 from .db import get_db
 
 
+@dataclass
 class Message:
     id: str
     session_id: str
@@ -35,10 +37,10 @@ async def create_message(
     """创建新消息"""
     db = await get_db()
     now = int(datetime.now().timestamp())
-    
+
     await db.execute(
-        """INSERT INTO messages 
-           (id, session_id, agent_id, role, content, attachments, plan_id, metadata, created_at) 
+        """INSERT INTO messages
+           (id, session_id, agent_id, role, content, attachments, plan_id, metadata, created_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             id,
@@ -52,17 +54,17 @@ async def create_message(
             now
         )
     )
-    
+
     # 更新会话的 preview 和 updated_at
     preview = content[:100] if content else ""
     await db.execute(
         "UPDATE sessions SET preview = ?, updated_at = ? WHERE id = ?",
         (preview, now, session_id)
     )
-    
+
     await db.commit()
     await db.close()
-    
+
     return Message(
         id=id,
         session_id=session_id,

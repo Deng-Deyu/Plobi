@@ -4,12 +4,14 @@ Phase 2: 数据持久化
 """
 
 import aiosqlite
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional, List
 import json
 from .db import get_db
 
 
+@dataclass
 class AgentMemory:
     key: str
     agent_id: str

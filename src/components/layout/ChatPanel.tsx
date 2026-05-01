@@ -35,6 +35,11 @@ export default function ChatPanel({ session }: ChatPanelProps) {
       timestamp: Date.now(),
     });
 
+    // Immediately scroll to bottom
+    setTimeout(() => {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, 50);
+
     // Start streaming from Master Agent
     await startStream({
       sessionId: session.id,
