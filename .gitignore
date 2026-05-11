@@ -61,12 +61,23 @@ cython_debug/
 # --- 敏感配置与本地数据 (保护你的 API KEY 和聊天记录) ---
 config/settings.json
 config/models_config.json
+backend/config/cli_whitelist.json
+plugins/registry.json
 sessions/*
 !sessions/.gitkeep
-/workspace/*
-!/workspace/.gitkeep
-/workspace/exports/*
-!/workspace/exports/.gitkeep
+backend/workspace/*
+!backend/workspace/.gitkeep
+backend/workspace/exports/*
+!backend/workspace/exports/.gitkeep
+backend/workspace/plans/*
+!backend/workspace/plans/.gitkeep
+backend/workspace/tasks/*
+!backend/workspace/tasks/.gitkeep
+
+# --- 项目计划与个人工作流文档 (仅本地) ---
+task.md
+BULEPRINT.md
+CLAUDE.md
 
 # .env 文件通常包含密钥，应被忽略
 .env
@@ -121,3 +132,10 @@ node_modules/
 # --- SQLite ---
 *.db
 *.db-journal
+
+# --- 旧版工作区数据 (根目录，新版在 backend/workspace/) ---
+workspace/*
+!workspace/.gitkeep
+workspace/exports/*
+!workspace/exports/.gitkeep
+workspace/exports/researcher/20260427_013941_test_task_001_test_report.md

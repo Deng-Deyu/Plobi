@@ -80,74 +80,6 @@ class SessionInfo(BaseModel):
     updated_at: float
 
 
-# ─── DeepSeek SSE Stream ───────────────────────────────────
-
-async def stream_deepseek(prompt: str, queue: asyncio.Queue):
-    """Stream tokens from DeepSeek API and push to SSE queue."""
-    if not DEEPSEEK_API_KEY:
-        await queue.put({"type": "token", "content": "⚠️ 未配置 DEEPSEEK_API_KEY，请在 .env 中设置"})
-        await queue.put({"type": "done"})
-        return
-
-    system_prompt = (
-        "你是 Plobi Agent 的 Master Agent（中枢主控）。"
-        "你负责与用户对话、理解需求、追问细节。"
-        "回复使用中文，风格简洁专业。"
-    )
-
-    payload = {
-        "model": "deepseek-chat",
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": prompt},
-        ],
-        "stream": True,
-        "max_tokens": 4096,
-        "temperature": 0.7,
-    }
-
-    headers = {
-        "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
-        "Content-Type": "application/json",
-    }
-
-    try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            async with client.stream(
-                "POST",
-                f"{DEEPSEEK_BASE_URL}/v1/chat/completions",
-                json=payload,
-                headers=headers,
-            ) as resp:
-                if resp.status_code != 200:
-                    error_text = await resp.aread()
-                    await queue.put({
-                        "type": "error",
-                        "message": f"DeepSeek API 错误 ({resp.status_code}): {error_text.decode()[:200]}",
-                    })
-                    return
-
-                async for line in resp.aiter_lines():
-                    if not line.startswith("data: "):
-                        continue
-                    data_str = line[6:]
-                    if data_str.strip() == "[DONE]":
-                        break
-                    try:
-                        data = json.loads(data_str)
-                        delta = data.get("choices", [{}])[0].get("delta", {})
-                        content = delta.get("content", "")
-                        if content:
-                            await queue.put({"type": "token", "content": content})
-                    except json.JSONDecodeError:
-                        continue
-
-        await queue.put({"type": "done"})
-
-    except Exception as e:
-        await queue.put({"type": "error", "message": str(e)})
-
-
 # ─── Routers ───────────────────────────────────────────────
 
 chat_router = APIRouter(prefix="/chat", tags=["chat"])
@@ -191,6 +123,11 @@ async def send_message(body: SendMessageRequest):
 
     async def run_graph():
         try:
+            # 确保会话存在（防止外键约束失败）
+            existing = await get_session(body.session_id)
+            if not existing:
+                await create_session(body.session_id, "新对话")
+
             # 保存用户消息到数据库
             await create_message(
                 id=body.message_id,
@@ -201,7 +138,7 @@ async def send_message(body: SendMessageRequest):
                 attachments=body.attachment_ids
             )
 
-            # 调用 Master Agent
+            # 调用 Master Agent (流式)
             agent_config = {
                 "model": {
                     "provider": "deepseek",
@@ -211,24 +148,21 @@ async def send_message(body: SendMessageRequest):
                 }
             }
 
-            result = await master_agent.chat(
+            needs_plan = False
+            accumulated_content = ""
+            async for chunk_info in master_agent.astream_chat(
                 user_message=body.prompt,
                 session_id=body.session_id,
                 agent_config=agent_config
-            )
-
-            # 流式输出 Master 响应
-            content = result.get("content", "")
-            if not content:
-                await queue.put({"type": "error", "message": "Master Agent 返回空响应"})
-                return
-
-            for char in content:
-                await queue.put({"type": "token", "content": char})
-                await asyncio.sleep(0.01)  # 模拟流式
+            ):
+                if chunk_info["type"] == "token":
+                    accumulated_content += chunk_info["content"]
+                    await queue.put({"type": "token", "content": chunk_info["content"]})
+                elif chunk_info["type"] == "done":
+                    needs_plan = chunk_info.get("needs_plan", False)
             
             # 如果需要规划，生成 plan.md
-            if result["needs_plan"]:
+            if needs_plan:
                 plan_result = await master_agent.generate_plan(
                     user_message=body.prompt,
                     session_id=body.session_id,
@@ -239,10 +173,110 @@ async def send_message(body: SendMessageRequest):
                     "plan_id": plan_result["plan_id"],
                     "plan_content": plan_result["plan_content"]
                 })
+                
+                # 开始执行 LangGraph
+                from agents.graph import build_orchestrator
+                graph = build_orchestrator()
+                initial_state = {
+                    "session_id": body.session_id,
+                    "user_message": body.prompt,
+                    "plan_id": plan_result["plan_id"],
+                    "plan_content": plan_result["plan_content"],
+                    "messages": [],
+                    "active_agents": [],
+                    "task_results": {},
+                    "status": "dispatching",
+                    "error": None
+                }
+                
+                async for event in graph.astream(initial_state):
+                    for node_name, state_update in event.items():
+                        if node_name in ["dispatch", "__start__"]:
+                            continue
+                        
+                        # 推送子 Agent 进度
+                        await queue.put({
+                            "type": "agent_progress",
+                            "agent_id": node_name,
+                            "status": "done"
+                        })
+                        
+                        # 如果有新消息，保存到数据库并推送给前端
+                        if "messages" in state_update and state_update["messages"]:
+                            latest_msg = state_update["messages"][-1]
+                            content = latest_msg["content"]
+                            await queue.put({
+                                "type": "agent_message",
+                                "agent_id": latest_msg["agent_id"],
+                                "content": content
+                            })
+                            # 检测文件产出（匹配 [文件已保存] path）
+                            import re
+                            file_match = re.search(r'\[文件已保存\]\s*(.+?)(?:\n|$)', content)
+                            if file_match:
+                                file_path = file_match.group(1).strip()
+                                await queue.put({
+                                    "type": "file_output",
+                                    "agent_id": latest_msg["agent_id"],
+                                    "filePath": file_path
+                                })
+                            # 检测 SANDBOX 代码块（工程师 / 音乐家 / 剪辑师 Agent）
+                            sandbox_matches = re.findall(r'<!-- SANDBOX:(\w+) -->\n?(.*?)\n?<!-- /SANDBOX -->', content, re.DOTALL)
+                            if sandbox_matches:
+                                for lang, code in sandbox_matches:
+                                    try:
+                                        from api.sandbox import propose_execution, CodeExecutionRequest
+                                        proposal = await propose_execution(CodeExecutionRequest(
+                                            code=code.strip(),
+                                            language=lang,
+                                            description=f"{node_name} 提交的代码",
+                                            agent_id=node_name,
+                                            session_id=body.session_id
+                                        ))
+                                        await queue.put({
+                                            "type": "agent_message",
+                                            "agent_id": "system",
+                                            "content": f"[沙盒执行] 代码已提交，等待用户确认。执行ID: {proposal['execution_id']}"
+                                        })
+                                    except Exception as e:
+                                        await queue.put({
+                                            "type": "agent_message",
+                                            "agent_id": "system",
+                                            "content": f"[沙盒执行] 提交失败: {e}"
+                                        })
+                            # 保存到数据库
+                            await create_message(
+                                id=f"{body.message_id}_{node_name}",
+                                session_id=body.session_id,
+                                agent_id=latest_msg["agent_id"],
+                                role="assistant",
+                                content=content,
+                            )
             
             await queue.put({"type": "done"})
             
+            # 保存 AI 回复到数据库
+            ai_msg_id = f"{body.message_id}_reply"
+            await create_message(
+                id=ai_msg_id,
+                session_id=body.session_id,
+                agent_id="master",
+                role="assistant",
+                content=accumulated_content,
+            )
+            
+            # 自动更新会话标题（第一条消息时）
+            existing_msgs = await list_messages(body.session_id)
+            if len(existing_msgs) <= 2:  # Only user msg + assistant msg
+                # Use first 20 chars of user message as title
+                title = body.prompt[:20]
+                if len(body.prompt) > 20:
+                    title += "..."
+                await update_session(body.session_id, title=title)
+            
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             await queue.put({"type": "error", "message": str(e)})
 
     asyncio.create_task(run_graph())
@@ -306,6 +340,47 @@ async def delete_session_api(session_id: str):
     return {"status": "ok" if deleted else "not found"}
 
 
+@session_router.get("/{session_id}/messages")
+async def list_session_messages(session_id: str):
+    """获取会话的所有消息"""
+    msgs = await list_messages(session_id)
+    return [
+        {
+            "id": m.id,
+            "session_id": m.session_id,
+            "agent_id": m.agent_id,
+            "role": m.role,
+            "content": m.content,
+            "attachments": m.attachments,
+            "plan_id": m.plan_id,
+            "metadata": m.metadata,
+            "created_at": m.created_at,
+        }
+        for m in msgs
+    ]
+
+
+@session_router.patch("/{session_id}")
+async def patch_session(session_id: str, body: dict):
+    """更新会话（标题、预览等）"""
+    updated = await update_session(
+        session_id,
+        title=body.get("title"),
+        preview=body.get("preview"),
+    )
+    if not updated:
+        return {"error": "not found"}
+    return {
+        "id": updated.id,
+        "title": updated.title,
+        "preview": updated.preview,
+        "primary_agent_id": updated.primary_agent_id,
+        "active_agent_ids": updated.active_agent_ids,
+        "created_at": updated.created_at,
+        "updated_at": updated.updated_at,
+    }
+
+
 # ─── App ───────────────────────────────────────────────────
 
 @asynccontextmanager
@@ -322,7 +397,7 @@ app = FastAPI(title="Plobi Agent Backend", version="0.2.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:1420", "tauri://localhost"],
+    allow_origins=["http://localhost:1420", "tauri://localhost", "https://tauri.localhost", "http://tauri.localhost"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useSettingsStore } from "../../store/settingsStore";
+import { X, Trash2, Package, Terminal, FileCode } from "lucide-react";
 
 interface Plugin {
   id: string;
@@ -129,6 +130,12 @@ export default function PluginManager({ onClose }: PluginManagerProps) {
     python: "Python",
   };
 
+  const typeIcon: Record<string, React.ReactNode> = {
+    mcp_npm: <Package size={14} />,
+    mcp_local: <Terminal size={14} />,
+    python: <FileCode size={14} />,
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
       <div className="bg-[var(--bg-1)] border border-[var(--border)] rounded-2xl w-[600px] max-h-[70vh] flex flex-col shadow-2xl">
@@ -146,9 +153,7 @@ export default function PluginManager({ onClose }: PluginManagerProps) {
               onClick={onClose}
               className="p-1 rounded-lg hover:bg-[var(--bg-2)] transition-colors text-[var(--text-muted)]"
             >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
+              <X size={20} />
             </button>
           </div>
         </div>
@@ -261,6 +266,9 @@ export default function PluginManager({ onClose }: PluginManagerProps) {
                 key={plugin.id}
                 className="flex items-center gap-3 p-3 rounded-lg bg-[var(--bg-0)] border border-[var(--border)]"
               >
+                <div className="w-8 h-8 rounded-lg bg-[var(--bg-2)] flex items-center justify-center text-[var(--text-muted)] shrink-0">
+                  {typeIcon[plugin.type] || <Package size={14} />}
+                </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-0.5">
                     <span className="text-sm font-medium truncate">{plugin.name}</span>
@@ -293,9 +301,7 @@ export default function PluginManager({ onClose }: PluginManagerProps) {
                   className="p-1.5 rounded hover:bg-red-500/10 text-[var(--text-muted)] hover:text-red-500 transition-colors shrink-0"
                   title="卸载"
                 >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                  </svg>
+                  <Trash2 size={14} />
                 </button>
               </div>
             ))

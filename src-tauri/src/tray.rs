@@ -31,6 +31,22 @@ pub fn create_tray(app: &App) -> Result<(), Box<dyn std::error::Error>> {
             }
             _ => {}
         })
+        .on_tray_icon_event(|tray, event| {
+            if let tauri::tray::TrayIconEvent::Click {
+                button: tauri::tray::MouseButton::Left,
+                button_state: tauri::tray::MouseButtonState::Up,
+                ..
+            } = event
+            {
+                let app = tray.app_handle();
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.unminimize();
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                    let _ = window.set_ignore_cursor_events(false);
+                }
+            }
+        })
         .build(app)?;
 
     Ok(())

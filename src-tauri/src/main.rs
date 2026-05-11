@@ -5,7 +5,7 @@ mod commands;
 mod tray;
 
 use tauri::Manager;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -27,7 +27,7 @@ fn main() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![greet, commands::get_backend_port])
+        .invoke_handler(tauri::generate_handler![greet, commands::get_backend_port, commands::show_main_window, commands::open_file])
         .setup(|app| {
             // Show main window on launch
             if let Some(window) = app.get_webview_window("main") {
@@ -37,9 +37,7 @@ fn main() {
             tray::create_tray(app)?;
 
             // Track overlay state with debounce
-            let overlay_visible = Arc::new(AtomicBool::new(false));
             let last_toggle = Arc::new(AtomicU64::new(0));
-            let overlay_visible_clone = overlay_visible.clone();
             let last_toggle_clone = last_toggle.clone();
 
             // Register Alt+/ global shortcut for overlay
@@ -54,16 +52,14 @@ fn main() {
                 last_toggle_clone.store(now, Ordering::SeqCst);
 
                 if let Some(overlay) = app.get_webview_window("overlay") {
-                    let is_visible = overlay_visible_clone.load(Ordering::SeqCst);
+                    let is_visible = overlay.is_visible().unwrap_or(false);
                     if is_visible {
                         let _ = overlay.hide();
-                        overlay_visible_clone.store(false, Ordering::SeqCst);
                     } else {
                         // Show and immediately set focus to prevent auto-hide
                         let _ = overlay.show();
                         std::thread::sleep(std::time::Duration::from_millis(50));
                         let _ = overlay.set_focus();
-                        overlay_visible_clone.store(true, Ordering::SeqCst);
                     }
                 }
             });

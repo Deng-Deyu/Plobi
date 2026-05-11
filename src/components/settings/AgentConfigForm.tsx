@@ -1,6 +1,9 @@
 import { useState, useEffect } from "react";
 import { useAgentConfigStore } from "../../store/agentConfigStore";
 import { useSettingsStore } from "../../store/settingsStore";
+import AgentAvatar from "../agents/AgentAvatar";
+import { X, Trash2 } from "lucide-react";
+import { getSkillColor } from "../../lib/skills";
 
 interface AgentConfigFormProps {
   onClose: () => void;
@@ -27,7 +30,7 @@ export default function AgentConfigForm({ onClose }: AgentConfigFormProps) {
 
   // Edit form state
   const [editName, setEditName] = useState("");
-  const [editAvatarType, setEditAvatarType] = useState<"emoji" | "url" | "initials">("emoji");
+  const [editAvatarType, setEditAvatarType] = useState<"initials" | "image">("initials");
   const [editAvatarValue, setEditAvatarValue] = useState("");
   const [editDescription, setEditDescription] = useState("");
   const [editTone, setEditTone] = useState("");
@@ -36,7 +39,8 @@ export default function AgentConfigForm({ onClose }: AgentConfigFormProps) {
   const [editModelId, setEditModelId] = useState("deepseek-chat");
   const [editTemperature, setEditTemperature] = useState(0.7);
   const [editMaxTokens, setEditMaxTokens] = useState(4096);
-  const [editSkills, setEditSkills] = useState("");
+  const [editSkills, setEditSkills] = useState<string[]>([]);
+  const [skillInput, setSkillInput] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -54,7 +58,9 @@ export default function AgentConfigForm({ onClose }: AgentConfigFormProps) {
   useEffect(() => {
     if (selectedAgent) {
       setEditName(selectedAgent.name);
-      setEditAvatarType(selectedAgent.avatar.type as "emoji" | "url" | "initials");
+      // Map legacy types to new system
+      const legacyType = selectedAgent.avatar.type;
+      setEditAvatarType(legacyType === "image" || legacyType === "url" ? "image" : "initials");
       setEditAvatarValue(selectedAgent.avatar.value);
       setEditDescription(selectedAgent.persona.description);
       setEditTone(selectedAgent.persona.tone);
@@ -63,7 +69,7 @@ export default function AgentConfigForm({ onClose }: AgentConfigFormProps) {
       setEditModelId(selectedAgent.model.model_id);
       setEditTemperature(selectedAgent.model.temperature);
       setEditMaxTokens(selectedAgent.model.max_tokens);
-      setEditSkills(selectedAgent.skills.join(", "));
+      setEditSkills(selectedAgent.skills);
     }
   }, [selectedAgent]);
 
@@ -85,10 +91,7 @@ export default function AgentConfigForm({ onClose }: AgentConfigFormProps) {
           temperature: editTemperature,
           max_tokens: editMaxTokens,
         },
-        skills: editSkills
-          .split(",")
-          .map((s) => s.trim())
-          .filter(Boolean),
+        skills: editSkills,
       });
     } finally {
       setSaving(false);
@@ -117,9 +120,7 @@ export default function AgentConfigForm({ onClose }: AgentConfigFormProps) {
             onClick={onClose}
             className="p-1 rounded-lg hover:bg-[var(--bg-2)] transition-colors text-[var(--text-muted)]"
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
+            <X size={20} />
           </button>
         </div>
 
@@ -136,7 +137,12 @@ export default function AgentConfigForm({ onClose }: AgentConfigFormProps) {
                     : "hover:bg-[var(--bg-2)] text-[var(--text-primary)]"
                 }`}
               >
-                <span className="text-lg">{agent.avatar.value}</span>
+                <AgentAvatar
+                  name={agent.name}
+                  avatarType={agent.avatar.type === "image" || agent.avatar.type === "url" ? "image" : "initials"}
+                  avatarValue={agent.avatar.type === "image" || agent.avatar.type === "url" ? agent.avatar.value : undefined}
+                  size="sm"
+                />
                 <span className="truncate">{agent.name}</span>
               </button>
             ))}
@@ -183,26 +189,77 @@ export default function AgentConfigForm({ onClose }: AgentConfigFormProps) {
                             className="w-full rounded-lg border border-[var(--border)] px-3 py-2 text-sm bg-[var(--bg-0)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/50"
                           />
                         </div>
-                        <div className="flex gap-2">
-                          <div className="flex-1">
-                            <label className="block text-xs text-[var(--text-muted)] mb-1">头像类型</label>
-                            <select
-                              value={editAvatarType}
-                              onChange={(e) => setEditAvatarType(e.target.value as "emoji" | "url" | "initials")}
-                              className="w-full rounded-lg border border-[var(--border)] px-3 py-2 text-sm bg-[var(--bg-0)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/50"
-                            >
-                              <option value="emoji">Emoji</option>
-                              <option value="url">URL</option>
-                              <option value="initials">首字母</option>
-                            </select>
-                          </div>
-                          <div className="flex-1">
-                            <label className="block text-xs text-[var(--text-muted)] mb-1">头像值</label>
-                            <input
-                              value={editAvatarValue}
-                              onChange={(e) => setEditAvatarValue(e.target.value)}
-                              className="w-full rounded-lg border border-[var(--border)] px-3 py-2 text-sm bg-[var(--bg-0)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/50"
+                        <div>
+                          <label className="block text-xs text-[var(--text-muted)] mb-2">头像</label>
+                          <div className="flex items-center gap-4">
+                            {/* Preview */}
+                            <AgentAvatar
+                              name={editName}
+                              avatarType={editAvatarType}
+                              avatarValue={editAvatarType === "image" ? editAvatarValue : undefined}
+                              size="lg"
                             />
+                            <div className="flex-1 space-y-2">
+                              {/* Type selector */}
+                              <div className="flex gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setEditAvatarType("initials")}
+                                  className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                                    editAvatarType === "initials"
+                                      ? "bg-[var(--accent)] text-white"
+                                      : "bg-[var(--bg-2)] text-[var(--text-secondary)] hover:bg-[var(--bg-2)]"
+                                  }`}
+                                >
+                                  首字母
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditAvatarType("image")}
+                                  className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                                    editAvatarType === "image"
+                                      ? "bg-[var(--accent)] text-white"
+                                      : "bg-[var(--bg-2)] text-[var(--text-secondary)] hover:bg-[var(--bg-2)]"
+                                  }`}
+                                >
+                                  图片
+                                </button>
+                              </div>
+                              {/* Image path/URL input — only when type is image */}
+                              {editAvatarType === "image" && (
+                                <div className="flex gap-2">
+                                  <input
+                                    value={editAvatarValue}
+                                    onChange={(e) => setEditAvatarValue(e.target.value)}
+                                    placeholder="图片 URL 或本地路径"
+                                    className="flex-1 rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs bg-[var(--bg-0)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/50"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      try {
+                                        const { open } = await import("@tauri-apps/plugin-dialog");
+                                        const selected = await open({
+                                          multiple: false,
+                                          filters: [{ name: "图片", extensions: ["png", "jpg", "jpeg", "webp", "gif", "svg"] }],
+                                        });
+                                        if (selected) {
+                                          setEditAvatarValue(String(selected));
+                                        }
+                                      } catch (err) {
+                                        console.error("File picker error:", err);
+                                      }
+                                    }}
+                                    className="px-3 py-1.5 rounded-lg border border-[var(--border)] text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-2)] transition-colors whitespace-nowrap"
+                                  >
+                                    选择文件
+                                  </button>
+                                </div>
+                              )}
+                              {editAvatarType === "initials" && (
+                                <p className="text-[10px] text-[var(--text-muted)]">自动从名称提取首字母，配色基于名称生成</p>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -287,12 +344,50 @@ export default function AgentConfigForm({ onClose }: AgentConfigFormProps) {
 
                       {/* Skills */}
                       <div>
-                        <label className="block text-xs text-[var(--text-muted)] mb-1">技能 (逗号分隔)</label>
-                        <input
-                          value={editSkills}
-                          onChange={(e) => setEditSkills(e.target.value)}
-                          className="w-full rounded-lg border border-[var(--border)] px-3 py-2 text-sm bg-[var(--bg-0)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/50"
-                        />
+                        <label className="block text-xs text-[var(--text-muted)] mb-1">技能</label>
+                        <div
+                          className="w-full min-h-[42px] rounded-lg border border-[var(--border)] px-2 py-1.5 bg-[var(--bg-0)] focus-within:ring-2 focus-within:ring-[var(--accent)]/50 flex flex-wrap gap-1.5 items-center"
+                          onClick={(e) => {
+                            if (e.currentTarget === e.target) {
+                              (e.currentTarget.querySelector('input') as HTMLInputElement)?.focus();
+                            }
+                          }}
+                        >
+                          {editSkills.map((skill) => (
+                            <span
+                              key={skill}
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium text-white shrink-0"
+                              style={{ backgroundColor: getSkillColor(skill) }}
+                            >
+                              {skill}
+                              <button
+                                type="button"
+                                onClick={() => setEditSkills((prev) => prev.filter((s) => s !== skill))}
+                                className="hover:bg-white/20 rounded-sm"
+                              >
+                                <X size={12} />
+                              </button>
+                            </span>
+                          ))}
+                          <input
+                            value={skillInput}
+                            onChange={(e) => setSkillInput(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                const val = skillInput.trim();
+                                if (val && !editSkills.includes(val)) {
+                                  setEditSkills((prev) => [...prev, val]);
+                                  setSkillInput("");
+                                }
+                              } else if (e.key === "Backspace" && !skillInput && editSkills.length > 0) {
+                                setEditSkills((prev) => prev.slice(0, -1));
+                              }
+                            }}
+                            placeholder={editSkills.length === 0 ? "输入技能按回车添加" : ""}
+                            className="flex-1 min-w-[80px] bg-transparent text-sm focus:outline-none py-1"
+                          />
+                        </div>
                       </div>
 
                       {/* Save */}
@@ -329,9 +424,7 @@ export default function AgentConfigForm({ onClose }: AgentConfigFormProps) {
                                 onClick={() => handleDeleteMemory(m.memory_key)}
                                 className="p-1 rounded hover:bg-red-500/10 text-[var(--text-muted)] hover:text-red-500 transition-colors shrink-0"
                               >
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                  <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                                </svg>
+                                <Trash2 size={16} />
                               </button>
                             </div>
                           ))}

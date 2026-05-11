@@ -40,27 +40,120 @@ export interface Session {
 interface ChatState {
   sessions: Session[];
   currentSession: Session | null;
+  isLoadingSessions: boolean;
 
   // Actions
-  createSession: () => Session;
-  setCurrentSession: (id: string) => void;
+  loadSessions: (port: number) => Promise<void>;
+  loadMessages: (port: number, sessionId: string) => Promise<void>;
+  createSession: (port?: number) => Promise<Session>;
+  setCurrentSession: (id: string, port?: number) => void;
   addMessage: (sessionId: string, message: Message) => void;
   appendToken: (sessionId: string, messageId: string, token: string) => void;
   setMessageStreaming: (sessionId: string, messageId: string, streaming: boolean) => void;
+  updateSessionTitle: (sessionId: string, title: string) => void;
   clearSessions: () => void;
 }
-
-let _sessionCounter = 0;
 
 export const useChatStore = create<ChatState>((set, get) => ({
   sessions: [],
   currentSession: null,
+  isLoadingSessions: false,
 
-  createSession: () => {
-    _sessionCounter++;
+  loadSessions: async (port: number) => {
+    set({ isLoadingSessions: true });
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/sessions`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const currentState = get();
+
+      const sessions: Session[] = data.map((s: Record<string, unknown>) => {
+        const existingSession = currentState.sessions.find((es) => es.id === s.id);
+        return {
+          id: s.id as string,
+          title: s.title as string,
+          preview: (s.preview as string) || "",
+          // Preserve in-memory messages if this session is already loaded
+          messages: existingSession?.messages ?? [],
+          activeAgents: (s.active_agent_ids as string[]) || ["master"],
+          createdAt: ((s.created_at as number) || 0) * 1000,
+          updatedAt: ((s.updated_at as number) || 0) * 1000,
+        };
+      });
+
+      // Also keep any sessions that exist locally but not on backend yet
+      const backendIds = new Set(sessions.map((s) => s.id));
+      for (const existing of currentState.sessions) {
+        if (!backendIds.has(existing.id)) {
+          sessions.push(existing);
+        }
+      }
+
+      // Update currentSession if its title/preview changed
+      const updatedCurrent = currentState.currentSession
+        ? sessions.find((s) => s.id === currentState.currentSession!.id) ?? currentState.currentSession
+        : null;
+
+      set({ sessions, currentSession: updatedCurrent, isLoadingSessions: false });
+    } catch (err) {
+      console.error("[ChatStore] Failed to load sessions:", err);
+      set({ isLoadingSessions: false });
+    }
+  },
+
+  loadMessages: async (port: number, sessionId: string) => {
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/sessions/${sessionId}/messages`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const messages: Message[] = data.map((m: Record<string, unknown>) => ({
+        id: m.id as string,
+        sessionId: m.session_id as string,
+        agentId: m.agent_id as string,
+        role: m.role as "user" | "assistant" | "system",
+        content: m.content as string,
+        streamBuffer: "",
+        isStreaming: false,
+        attachments: (m.attachments as Attachment[]) || [],
+        planId: m.plan_id as string | undefined,
+        timestamp: ((m.created_at as number) || 0) * 1000,
+      }));
+
+      set((s) => ({
+        sessions: s.sessions.map((sess) =>
+          sess.id === sessionId ? { ...sess, messages } : sess
+        ),
+        currentSession:
+          s.currentSession?.id === sessionId
+            ? { ...s.currentSession, messages }
+            : s.currentSession,
+      }));
+    } catch (err) {
+      console.error("[ChatStore] Failed to load messages:", err);
+    }
+  },
+
+  createSession: async (port?: number) => {
+    // If port is provided, create session on backend first
+    let sessionId = crypto.randomUUID();
+    let title = "新对话";
+
+    if (port) {
+      try {
+        const res = await fetch(`http://127.0.0.1:${port}/sessions`, { method: "POST" });
+        if (res.ok) {
+          const data = await res.json();
+          sessionId = data.id;
+          title = data.title;
+        }
+      } catch (err) {
+        console.error("[ChatStore] Failed to create session on backend:", err);
+      }
+    }
+
     const session: Session = {
-      id: crypto.randomUUID(),
-      title: `新对话 ${_sessionCounter}`,
+      id: sessionId,
+      title,
       preview: "",
       messages: [],
       activeAgents: ["master"],
@@ -74,9 +167,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
     return session;
   },
 
-  setCurrentSession: (id: string) => {
+  setCurrentSession: (id: string, port?: number) => {
     const session = get().sessions.find((s) => s.id === id) ?? null;
     set({ currentSession: session });
+    // Load messages from backend if session has no messages yet
+    if (session && session.messages.length === 0 && port) {
+      get().loadMessages(port, id);
+    }
   },
 
   addMessage: (sessionId: string, message: Message) => {
@@ -133,6 +230,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
       currentSession:
         s.currentSession?.id === sessionId
           ? { ...s.currentSession, messages: updateMessages(s.currentSession.messages) }
+          : s.currentSession,
+    }));
+  },
+
+  updateSessionTitle: (sessionId: string, title: string) => {
+    set((s) => ({
+      sessions: s.sessions.map((sess) =>
+        sess.id === sessionId ? { ...sess, title } : sess
+      ),
+      currentSession:
+        s.currentSession?.id === sessionId
+          ? { ...s.currentSession, title }
           : s.currentSession,
     }));
   },

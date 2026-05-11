@@ -15,22 +15,15 @@ class MasterAgent:
     def __init__(self):
         self.system_prompt = """你是 Plobi Agent 的 Master Agent（中枢主控）。
 
-你的职责：
-1. 与用户直接对话，追问细节，澄清需求
-2. 理解用户需求，判断是否需要调用子 Agent
-3. 生成标准化的 plan.md 任务书
-4. 将任务分发给对应子 Agent
-5. 聚合子 Agent 成果，向用户汇报
+你的核心职责：
+1. **意图澄清与追问**：如果用户的需求含糊不清或缺少关键信息（如目标受众、预期格式、特定约束、截止要求等），你必须**优先追问细节**，绝对不能在信息不足的情况下凭空瞎编或强行分配任务。
+2. **任务评估与规划**：当需求明确且较为复杂（如需要研究、生成图表、开发代码、制作PPT、视频等）时，你将在回复的最后一行加上 `<NEED_PLAN>` 标签，系统将自动生成详细的任务书。
+3. **直接回复**：对于简单的日常问答、概念解释，无需麻烦子Agent，直接回答即可，不要加标签。
 
-对话风格：
-- 主动追问关键信息（截止时间？格式要求？受众？）
-- 用第一人称，有明确名字和人格
-- 汇报时引用子 Agent 名称
-- 简洁专业，避免冗余
-
-决策规则：
-- 如果用户需求简单（如简单问答），直接回复
-- 如果用户需求复杂（如需要研究、创作、技术实现），生成 plan.md 并调度子 Agent
+对话规范：
+- 用第一人称，态度专业、热情。
+- 不要向用户展示内部的系统机制，直接沟通需求即可。
+- 如果决定生成规划，回复中应告知用户：“好的，我已经了解了您的需求，我马上为您制定执行计划并分配任务。”，然后在末尾另起一行输出 `<NEED_PLAN>`。
 """
     
     async def chat(
@@ -41,7 +34,6 @@ class MasterAgent:
         memory_context: str = ""
     ) -> dict:
         """与用户对话"""
-        # 构建系统提示
         system_content = self.system_prompt
         if memory_context:
             system_content += f"\n\n{memory_context}"
@@ -51,7 +43,6 @@ class MasterAgent:
             HumanMessage(content=user_message)
         ]
         
-        # 调用 LLM
         provider = agent_config.get("model", {}).get("provider", "deepseek")
         model_id = agent_config.get("model", {}).get("model_id")
         temperature = agent_config.get("model", {}).get("temperature", 0.7)
@@ -65,24 +56,83 @@ class MasterAgent:
             max_tokens=max_tokens
         )
         
-        # 判断是否需要规划（简化版，Phase 3 用 LLM 决策）
-        needs_plan = self._needs_plan(user_message, response)
+        needs_plan = "<NEED_PLAN>" in response
+        # 移除标签
+        response = response.replace("<NEED_PLAN>", "").strip()
         
         return {
             "content": response,
             "needs_plan": needs_plan,
             "agent_id": "master"
         }
-    
-    def _needs_plan(self, user_message: str, ai_response: str) -> bool:
-        """判断是否需要生成 plan.md"""
-        # 简化规则：如果用户消息包含特定关键词，需要规划
-        plan_keywords = [
-            "研究", "分析", "生成", "制作", "实现", "设计",
-            "任务", "项目", "报告", "文档", "PPT", "视频",
-            "音乐", "音频", "代码", "建模", "剪辑"
+
+    async def astream_chat(
+        self,
+        user_message: str,
+        session_id: str,
+        agent_config: dict,
+        memory_context: str = ""
+    ):
+        """流式与用户对话"""
+        system_content = self.system_prompt
+        if memory_context:
+            system_content += f"\n\n{memory_context}"
+        
+        messages = [
+            SystemMessage(content=system_content),
+            HumanMessage(content=user_message)
         ]
-        return any(keyword in user_message for keyword in plan_keywords)
+        
+        provider = agent_config.get("model", {}).get("provider", "deepseek")
+        model_id = agent_config.get("model", {}).get("model_id")
+        temperature = agent_config.get("model", {}).get("temperature", 0.7)
+        max_tokens = agent_config.get("model", {}).get("max_tokens", 4096)
+        
+        full_response = ""
+        buffer = ""
+        async for chunk in router.astream(
+            provider=provider,
+            messages=messages,
+            model_id=model_id,
+            temperature=temperature,
+            max_tokens=max_tokens
+        ):
+            full_response += chunk
+            buffer += chunk
+            
+            # 延迟发送以隐藏可能的 <NEED_PLAN> 标签
+            if "<NEED_PLAN" in buffer:
+                # 仍在累积标签，暂时不 yield
+                if buffer.endswith(">"):
+                    buffer = buffer.replace("<NEED_PLAN>", "")
+                pass
+            else:
+                # 如果明确没有 <NEED_PLAN 前缀，清空buffer yield
+                if "<" in buffer:
+                    # 可能正在生成 <NEED_PLAN
+                    idx = buffer.rfind("<")
+                    if "<NEED_PLAN".startswith(buffer[idx:]):
+                        safe_part = buffer[:idx]
+                        if safe_part:
+                            yield {"type": "token", "content": safe_part}
+                        buffer = buffer[idx:]
+                    else:
+                        yield {"type": "token", "content": buffer}
+                        buffer = ""
+                else:
+                    yield {"type": "token", "content": buffer}
+                    buffer = ""
+        
+        # 兜底清理
+        if buffer:
+            buffer = buffer.replace("<NEED_PLAN>", "")
+            if buffer:
+                yield {"type": "token", "content": buffer}
+            
+        needs_plan = "<NEED_PLAN>" in full_response
+        full_response_cleaned = full_response.replace("<NEED_PLAN>", "").strip()
+        
+        yield {"type": "done", "needs_plan": needs_plan, "content": full_response_cleaned}
     
     async def generate_plan(
         self,

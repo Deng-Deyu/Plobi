@@ -7,6 +7,7 @@ import AgentConfigForm from "./components/settings/AgentConfigForm";
 import PluginManager from "./components/settings/PluginManager";
 import SandboxConfirm from "./components/sandbox/SandboxConfirm";
 import { useChatStore } from "./store/chatStore";
+import { useSettingsStore } from "./store/settingsStore";
 import { useStream } from "./hooks/useStream";
 
 export default function App() {
@@ -14,7 +15,9 @@ export default function App() {
   const sessions = useChatStore((s) => s.sessions);
   const createSession = useChatStore((s) => s.createSession);
   const setCurrentSession = useChatStore((s) => s.setCurrentSession);
+  const loadSessions = useChatStore((s) => s.loadSessions);
   const addMessage = useChatStore((s) => s.addMessage);
+  const backendPort = useSettingsStore((s) => s.backendPort);
   const { startStream } = useStream();
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -23,19 +26,24 @@ export default function App() {
   const [showPluginManager, setShowPluginManager] = useState(false);
   const [showSandbox, setShowSandbox] = useState(false);
 
+  // Load sessions from backend on mount
+  useEffect(() => {
+    loadSessions(backendPort);
+  }, [backendPort, loadSessions]);
+
   // Listen for overlay messages
   useEffect(() => {
     let unlisten: (() => void) | undefined;
 
     const setupListener = async () => {
       const { listen } = await import("@tauri-apps/api/event");
-      unlisten = await listen<{ prompt: string }>("overlay-send-message", (event) => {
+      unlisten = await listen<{ prompt: string }>("overlay-send-message", async (event) => {
         const { prompt } = event.payload;
 
         // Get or create a session
         let session = currentSession;
         if (!session) {
-          session = createSession();
+          session = await createSession(backendPort);
         }
 
         // Add user message to store
@@ -65,7 +73,15 @@ export default function App() {
     return () => {
       unlisten?.();
     };
-  }, [currentSession, createSession, addMessage, startStream]);
+  }, [currentSession, createSession, addMessage, startStream, backendPort]);
+
+  const handleCreateSession = () => {
+    createSession(backendPort);
+  };
+
+  const handleSelectSession = (id: string) => {
+    setCurrentSession(id, backendPort);
+  };
 
   return (
     <div className="flex h-screen w-screen bg-bg-0 text-text-primary overflow-hidden">
@@ -74,8 +90,8 @@ export default function App() {
         <Sidebar
           sessions={sessions}
           currentSessionId={currentSession?.id ?? null}
-          onSelectSession={setCurrentSession}
-          onNewSession={createSession}
+          onSelectSession={handleSelectSession}
+          onNewSession={handleCreateSession}
           onCollapse={() => setSidebarCollapsed(true)}
         />
       )}

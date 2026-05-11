@@ -63,7 +63,6 @@ def build_orchestrator() -> StateGraph:
     g = StateGraph(OrchestratorState)
 
     # 添加节点
-    g.add_node("master_chat", master_chat_node)
     g.add_node("dispatch", dispatch_node)
     g.add_node("researcher", researcher_node)
     g.add_node("engineer", engineer_node)
@@ -72,28 +71,15 @@ def build_orchestrator() -> StateGraph:
     g.add_node("videographer", videographer_node)
     g.add_node("aggregate", aggregate_node)
 
-    # 设置入口
-    g.set_entry_point("master_chat")
+    # 取消 master_chat_node，直接从 dispatch 开始
+    g.set_entry_point("dispatch")
 
-    # Master 决定是否需要规划
-    g.add_conditional_edges("master_chat", route_after_master, {
-        "need_plan": "dispatch",
-        "direct_reply": END,
-    })
+    # 分发后路由到对应子 Agent 或聚合
+    g.add_conditional_edges("dispatch", route_to_next_agent)
 
-    # 分发后路由到对应子 Agent
-    g.add_conditional_edges("dispatch", route_to_agents, {
-        "researcher": "researcher",
-        "engineer": "engineer",
-        "publisher": "publisher",
-        "musician": "musician",
-        "videographer": "videographer",
-        "aggregate": "aggregate",
-    })
-
-    # 所有子 Agent 完成后聚合
+    # 所有子 Agent 完成后回到 dispatch 调度下一个
     for agent in ["researcher", "engineer", "publisher", "musician", "videographer"]:
-        g.add_edge(agent, "aggregate")
+        g.add_edge(agent, "dispatch")
 
     g.add_edge("aggregate", END)
     return g.compile()
@@ -101,131 +87,152 @@ def build_orchestrator() -> StateGraph:
 
 # ─── 节点实现 ───────────────────────────────────────────────
 
-async def master_chat_node(state: OrchestratorState) -> OrchestratorState:
-    """Master Agent 对话节点：理解需求、生成 plan.md"""
-    # 注意：此节点在 main.py 中通过 MasterAgent 直接处理
-    # LangGraph 主要用于子 Agent 调度
-    state["status"] = "planning"
-    return state
-
-
 async def dispatch_node(state: OrchestratorState) -> OrchestratorState:
     """分发任务到子 Agent"""
+    import re
     state["status"] = "dispatching"
-    # 根据 plan.md 决定激活哪些子 Agent
-    # Phase 2: 暂时激活所有子 Agent
-    state["active_agents"] = ["researcher", "engineer", "publisher", "musician", "videographer"]
+    
+    # 如果还没有解析过 plan，解析它
+    if not state.get("active_agents"):
+        plan_content = state.get("plan_content", "")
+        # 从 markdown 中正则提取所有的 "**负责 Agent**: xxxx"
+        matches = re.findall(r'\*\*负责 Agent\*\*:?\s*([a-zA-Z0-9_]+)', plan_content)
+        valid_agents = [m.lower().strip() for m in matches if m.lower().strip() in DEFAULT_AGENT_CONFIGS]
+        # 去重但保持顺序
+        seen = set()
+        active_agents = []
+        for a in valid_agents:
+            if a not in seen:
+                active_agents.append(a)
+                seen.add(a)
+        
+        state["active_agents"] = active_agents
+        
     return state
 
 
-async def researcher_node(state: OrchestratorState) -> OrchestratorState:
+async def researcher_node(state: OrchestratorState) -> dict:
     """研究员节点"""
     agent = ResearcherAgent("researcher", DEFAULT_AGENT_CONFIGS["researcher"])
     result = await agent.execute(
         task_description=state["user_message"],
         input_data=state.get("plan_content", "")
     )
-    state["messages"].append({
+    new_msg = {
         "role": "assistant",
         "agent_id": "researcher",
         "content": result
-    })
-    state["task_results"]["researcher"] = result
-    return state
+    }
+    task_results = state.get("task_results", {}).copy()
+    task_results["researcher"] = result
+    return {"messages": [new_msg], "task_results": task_results}
 
 
-async def engineer_node(state: OrchestratorState) -> OrchestratorState:
+async def engineer_node(state: OrchestratorState) -> dict:
     """工程师节点"""
     agent = EngineerAgent("engineer", DEFAULT_AGENT_CONFIGS["engineer"])
     result = await agent.execute(
         task_description=state["user_message"],
         input_data=state.get("plan_content", "")
     )
-    state["messages"].append({
+    new_msg = {
         "role": "assistant",
         "agent_id": "engineer",
         "content": result
-    })
-    state["task_results"]["engineer"] = result
-    return state
+    }
+    task_results = state.get("task_results", {}).copy()
+    task_results["engineer"] = result
+    return {"messages": [new_msg], "task_results": task_results}
 
 
-async def publisher_node(state: OrchestratorState) -> OrchestratorState:
+async def publisher_node(state: OrchestratorState) -> dict:
     """出版官节点"""
     agent = PublisherAgent("publisher", DEFAULT_AGENT_CONFIGS["publisher"])
     result = await agent.execute(
         task_description=state["user_message"],
         input_data=state.get("plan_content", "")
     )
-    state["messages"].append({
+    new_msg = {
         "role": "assistant",
         "agent_id": "publisher",
         "content": result
-    })
-    state["task_results"]["publisher"] = result
-    return state
+    }
+    task_results = state.get("task_results", {}).copy()
+    task_results["publisher"] = result
+    return {"messages": [new_msg], "task_results": task_results}
 
 
-async def musician_node(state: OrchestratorState) -> OrchestratorState:
+async def musician_node(state: OrchestratorState) -> dict:
     """音乐家节点"""
     agent = MusicianAgent("musician", DEFAULT_AGENT_CONFIGS["musician"])
     result = await agent.execute(
         task_description=state["user_message"],
         input_data=state.get("plan_content", "")
     )
-    state["messages"].append({
+    new_msg = {
         "role": "assistant",
         "agent_id": "musician",
         "content": result
-    })
-    state["task_results"]["musician"] = result
-    return state
+    }
+    task_results = state.get("task_results", {}).copy()
+    task_results["musician"] = result
+    return {"messages": [new_msg], "task_results": task_results}
 
 
-async def videographer_node(state: OrchestratorState) -> OrchestratorState:
+async def videographer_node(state: OrchestratorState) -> dict:
     """剪辑师节点"""
     agent = VideographerAgent("videographer", DEFAULT_AGENT_CONFIGS["videographer"])
     result = await agent.execute(
         task_description=state["user_message"],
         input_data=state.get("plan_content", "")
     )
-    state["messages"].append({
+    new_msg = {
         "role": "assistant",
         "agent_id": "videographer",
         "content": result
-    })
-    state["task_results"]["videographer"] = result
-    return state
+    }
+    task_results = state.get("task_results", {}).copy()
+    task_results["videographer"] = result
+    return {"messages": [new_msg], "task_results": task_results}
 
 
-async def aggregate_node(state: OrchestratorState) -> OrchestratorState:
+async def aggregate_node(state: OrchestratorState) -> dict:
     """聚合所有子 Agent 结果"""
-    state["status"] = "aggregating"
     summary = f"所有任务已完成：\n"
-    for agent_id, result in state["task_results"].items():
+    for agent_id, result in state.get("task_results", {}).items():
         summary += f"- {agent_id}: {result[:100]}...\n"
-    state["messages"].append({
+    new_msg = {
         "role": "assistant",
         "agent_id": "master",
         "content": summary
-    })
-    state["status"] = "done"
-    return state
+    }
+    return {"messages": [new_msg], "status": "done"}
 
 
 # ─── 路由函数 ───────────────────────────────────────────────
 
-def route_after_master(state: OrchestratorState) -> Literal["need_plan", "direct_reply"]:
-    """Master 决定是否需要规划"""
-    # Phase 2: 简单判断，Phase 3: LLM 决策
-    if "复杂" in state["user_message"] or "任务" in state["user_message"]:
-        return "need_plan"
-    return "direct_reply"
+# ─── 路由函数 ───────────────────────────────────────────────
 
-
-def route_to_agents(state: OrchestratorState) -> Literal["researcher", "engineer", "publisher", "musician", "videographer", "aggregate"]:
-    """路由到对应子 Agent"""
-    # Phase 2: 简单轮询，Phase 3: 根据 plan.md 路由
-    if not state["active_agents"]:
+def route_to_next_agent(state: OrchestratorState) -> Literal["researcher", "engineer", "publisher", "musician", "videographer", "aggregate"]:
+    """路由到下一个子 Agent"""
+    if not state.get("active_agents"):
         return "aggregate"
-    return state["active_agents"][0] if state["active_agents"] else "aggregate"
+    
+    # 获取下一个 agent
+    next_agent = state["active_agents"][0]
+    
+    # 状态不在这里更新，LangGraph 路由函数应该是纯函数，不应修改 state
+    # state 的更新必须在 node 中进行。
+    # 既然如此，我们要么在 dispatch_node 中就把它 pop 掉并返回（但我们需要知道本次调度谁）
+    # 其实如果我们在 dispatch_node 中：
+    # state["current_agent"] = next_agent
+    # state["active_agents"] = active_agents[1:]
+    # 就可以，然后在路由函数里 return state["current_agent"]。
+    
+    # 或者就根据 task_results 判断：已经有结果的说明执行过了
+    # 这也是一个纯函数的方式
+    for agent in state["active_agents"]:
+        if agent not in state.get("task_results", {}):
+            return agent
+            
+    return "aggregate"

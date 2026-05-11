@@ -6,10 +6,12 @@ Phase 2: 数据持久化
 import aiosqlite
 from datetime import datetime
 from typing import Optional, List
+from dataclasses import dataclass, field
 import json
 from .db import get_db
 
 
+@dataclass
 class Session:
     id: str
     title: str
@@ -18,6 +20,19 @@ class Session:
     active_agent_ids: List[str]
     created_at: int
     updated_at: int
+
+
+def _row_to_session(row: tuple) -> Session:
+    """Convert a database row tuple to a Session dataclass."""
+    return Session(
+        id=row[0],
+        title=row[1],
+        preview=row[2],
+        primary_agent_id=row[3],
+        active_agent_ids=json.loads(row[4]),
+        created_at=row[5],
+        updated_at=row[6]
+    )
 
 
 async def create_session(
@@ -62,15 +77,7 @@ async def get_session(session_id: str) -> Optional[Session]:
     if not row:
         return None
     
-    return Session(
-        id=row[0],
-        title=row[1],
-        preview=row[2],
-        primary_agent_id=row[3],
-        active_agent_ids=json.loads(row[4]),
-        created_at=row[5],
-        updated_at=row[6]
-    )
+    return _row_to_session(row)
 
 
 async def list_sessions(limit: int = 50, offset: int = 0) -> List[Session]:
@@ -83,18 +90,7 @@ async def list_sessions(limit: int = 50, offset: int = 0) -> List[Session]:
     rows = await cursor.fetchall()
     await db.close()
     
-    return [
-        Session(
-            id=row[0],
-            title=row[1],
-            preview=row[2],
-            primary_agent_id=row[3],
-            active_agent_ids=json.loads(row[4]),
-            created_at=row[5],
-            updated_at=row[6]
-        )
-        for row in rows
-    ]
+    return [_row_to_session(row) for row in rows]
 
 
 async def update_session(
@@ -133,14 +129,25 @@ async def update_session(
         params
     )
     await db.commit()
+    
+    # Read back the updated session using the same connection
+    cursor = await db.execute(
+        "SELECT id, title, preview, primary_agent_id, active_agent_ids, created_at, updated_at FROM sessions WHERE id = ?",
+        (session_id,)
+    )
+    row = await cursor.fetchone()
     await db.close()
     
-    return await get_session(session_id)
+    if not row:
+        return None
+    return _row_to_session(row)
 
 
 async def delete_session(session_id: str) -> bool:
     """删除会话（级联删除关联消息）"""
     db = await get_db()
+    # Delete messages first (SQLite foreign keys might not cascade)
+    await db.execute("DELETE FROM messages WHERE session_id = ?", (session_id,))
     cursor = await db.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
     await db.commit()
     deleted = cursor.rowcount > 0

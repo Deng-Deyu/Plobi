@@ -15,13 +15,8 @@ export default function OverlayInput() {
       await overlay.hide();
 
       // Show and focus main window
-      const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
-      const mainWindow = await WebviewWindow.getByLabel("main");
-      if (mainWindow) {
-        await mainWindow.unminimize();
-        await mainWindow.show();
-        await mainWindow.setFocus();
-      }
+      const { invoke } = await import("@tauri-apps/api/core");
+      await invoke("show_main_window");
     } catch (error) {
       console.error("Overlay send error:", error);
     }

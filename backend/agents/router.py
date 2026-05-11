@@ -17,14 +17,18 @@ class ModelRouter:
     
     def __init__(self):
         self._clients: Dict[str, ChatOpenAI] = {}
+        _deepseek_base = os.getenv("DEEPSEEK_BASE_URL") or os.getenv("DEEPSEEK_API_BASE") or "https://api.deepseek.com"
+        # Ensure base_url ends with /v1 for LangChain ChatOpenAI compatibility
+        if not _deepseek_base.rstrip("/").endswith("/v1"):
+            _deepseek_base = _deepseek_base.rstrip("/") + "/v1"
         self._configs: Dict[str, Dict[str, Any]] = {
             "deepseek": {
-                "base_url": os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
+                "base_url": _deepseek_base,
                 "api_key": os.getenv("DEEPSEEK_API_KEY", ""),
                 "model": "deepseek-chat",
             },
             "deepseek-coder": {
-                "base_url": os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
+                "base_url": _deepseek_base,
                 "api_key": os.getenv("DEEPSEEK_API_KEY", ""),
                 "model": "deepseek-coder",
             },
@@ -46,10 +50,17 @@ class ModelRouter:
             config = self._configs.get(provider, {})
             
             if provider == "deepseek" or provider == "deepseek-coder":
+                import httpx
+                # 明确对 DeepSeek 禁用代理，防止本地代理 (如 Clash/v2ray) 导致 httpx 异步连接 TLS 握手失败
+                http_async_client = httpx.AsyncClient(proxy=None)
+                http_client = httpx.Client(proxy=None)
+                
                 client = ChatOpenAI(
                     base_url=config.get("base_url"),
                     api_key=config.get("api_key"),
                     model=model_id or config.get("model"),
+                    http_client=http_client,
+                    http_async_client=http_async_client,
                     **kwargs
                 )
             elif provider == "anthropic":
@@ -84,22 +95,25 @@ class ModelRouter:
         model_id: Optional[str] = None,
         temperature: float = 0.7,
         max_tokens: int = 4096,
-        stream: bool = False
     ) -> str:
         """调用 LLM"""
         client = self.get_client(provider, model_id, temperature=temperature, max_tokens=max_tokens)
-        
-        if stream:
-            # 流式调用
-            response = ""
-            async for chunk in client.astream(messages):
-                if chunk.content:
-                    response += chunk.content
-            return response
-        else:
-            # 非流式调用
-            result = await client.ainvoke(messages)
-            return result.content
+        result = await client.ainvoke(messages)
+        return result.content
+
+    async def astream(
+        self,
+        provider: str,
+        messages: list,
+        model_id: Optional[str] = None,
+        temperature: float = 0.7,
+        max_tokens: int = 4096,
+    ):
+        """流式调用 LLM，返回异步生成器"""
+        client = self.get_client(provider, model_id, temperature=temperature, max_tokens=max_tokens)
+        async for chunk in client.astream(messages):
+            if chunk.content:
+                yield chunk.content
 
 
 # 全局单例

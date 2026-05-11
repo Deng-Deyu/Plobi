@@ -4,7 +4,7 @@ import { useTaskStore } from "../store/taskStore";
 import { useSettingsStore } from "../store/settingsStore";
 
 interface StreamEvent {
-  type: "token" | "agent_status" | "plan_created" | "file_output" | "done" | "error";
+  type: "token" | "agent_status" | "plan_created" | "agent_progress" | "agent_message" | "file_output" | "done" | "error";
   content?: string;
   agentId?: string;
   status?: string;
@@ -62,9 +62,60 @@ export function useStream() {
               updateAgentStatus(data.agentId, data.status as "pending" | "running" | "done" | "error");
             }
             break;
+          case "plan_created":
+            // 插入 PlanCard 消息
+            addMessage(params.sessionId, {
+              id: crypto.randomUUID(),
+              sessionId: params.sessionId,
+              agentId: "master",
+              role: "assistant",
+              content: `<PLAN_CARD_DATA>${data.planContent}</PLAN_CARD_DATA>`,
+              streamBuffer: "",
+              isStreaming: false,
+              attachments: [],
+              timestamp: Date.now(),
+            });
+            break;
+          case "agent_progress":
+            if (data.agentId && data.status) {
+              updateAgentStatus(data.agentId, data.status as "pending" | "running" | "done" | "error");
+            }
+            break;
+          case "agent_message":
+            if (data.agentId && data.content) {
+              addMessage(params.sessionId, {
+                id: crypto.randomUUID(),
+                sessionId: params.sessionId,
+                agentId: data.agentId,
+                role: "assistant",
+                content: data.content,
+                streamBuffer: "",
+                isStreaming: false,
+                attachments: [],
+                timestamp: Date.now(),
+              });
+            }
+            break;
+          case "file_output":
+            if (data.filePath) {
+              addMessage(params.sessionId, {
+                id: crypto.randomUUID(),
+                sessionId: params.sessionId,
+                agentId: data.agentId || "system",
+                role: "system",
+                content: `[文件已保存] ${data.filePath}`,
+                streamBuffer: "",
+                isStreaming: false,
+                attachments: [],
+                timestamp: Date.now(),
+              });
+            }
+            break;
           case "done":
             setMessageStreaming(params.sessionId, msgId, false);
             es.close();
+            // Reload sessions to pick up auto-updated title from backend
+            useChatStore.getState().loadSessions(backendPort);
             break;
           case "error":
             setMessageStreaming(params.sessionId, msgId, false);
